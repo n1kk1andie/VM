@@ -1,0 +1,1212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>VM Building Society — Operations SLA Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Sora:wght@400;600;700;800&family=IBM+Plex+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/msal-browser/3.7.1/msal-browser.min.js"></script>
+<style>
+:root { --red:#E4012B; --ink:#1C1416; --paper:#F6F3F1; --dim:#8A7E7A; --line:#EEE7E3; }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--paper); color:var(--ink); font-family:'IBM Plex Sans',system-ui,sans-serif; }
+.shell { min-height:100vh; display:flex; justify-content:center; }
+.shell.center { align-items:center; padding:20px; }
+.app { width:100%; max-width:430px; display:flex; flex-direction:column; min-height:100vh; }
+.content { flex:1; padding:4px 16px 96px; }
+.appbar { position:sticky; top:0; z-index:10; background:rgba(246,243,241,.93); backdrop-filter:blur(10px);
+  padding:14px 16px 10px; display:flex; align-items:center; gap:11px; }
+.brand { font-family:Sora,sans-serif; font-weight:800; font-size:16.5px; letter-spacing:-.01em; white-space:nowrap; }
+.banner { margin:0 16px 8px; background:#FBF2DC; color:#A07208; font-size:12px; border-radius:10px; padding:9px 12px; line-height:1.45; }
+.srcbadge { font-size:9.5px; font-weight:700; letter-spacing:.04em; color:#8A7E7A; background:#fff; border:1px solid var(--line);
+  border-radius:99px; padding:4px 8px; white-space:nowrap; }
+.srcbadge.live { color:#0E8A4D; border-color:#BFE3CF; background:#E5F4EC; }
+.userchip { width:36px; height:36px; border-radius:99px; background:var(--red); color:#fff; border:none; cursor:pointer;
+  font-family:Sora; font-weight:700; font-size:13px; flex-shrink:0; }
+.card { background:#fff; border-radius:18px; padding:16px; box-shadow:0 1px 3px rgba(28,20,22,.07); border:none; }
+.btncard { cursor:pointer; text-align:left; }
+.hero { background:linear-gradient(160deg,#E4012B 0%,#A60020 100%); border-radius:22px; padding:20px 18px 18px;
+  color:#fff; box-shadow:0 8px 24px rgba(164,1,35,.25); }
+.eyebrow { font-family:Sora; font-size:12px; font-weight:700; letter-spacing:.12em; opacity:.85; }
+.big { font-family:Sora; font-size:52px; font-weight:800; line-height:1.05; margin:6px 0 2px; }
+.num { font-family:Sora; font-size:26px; font-weight:800; }
+.num18 { font-family:Sora; font-size:18px; font-weight:800; } .num17 { font-family:Sora; font-size:17px; font-weight:800; }
+.num16 { font-family:Sora; font-size:16px; font-weight:800; }
+.t15 { font-family:Sora; font-size:15px; font-weight:700; } .t14 { font-family:Sora; font-size:14px; font-weight:700; }
+.t13 { font-size:13.5px; font-weight:600; line-height:1.3; }
+.sub { font-size:11.5px; color:var(--dim); } .sub13 { font-size:12.5px; color:#6E625E; line-height:1.5; }
+.dim13 { font-size:13px; opacity:.9; } .dim12 { font-size:12px; opacity:.85; } .dim11 { font-size:11px; opacity:.8; }
+.b { font-weight:700; }
+.h2l { font-family:Sora; font-size:13px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:var(--dim); margin:22px 4px 10px; }
+.row { display:flex; } .col { display:flex; flex-direction:column; } .mid { align-items:center; }
+.between { justify-content:space-between; } .base { align-items:baseline; } .wrap { flex-wrap:wrap; }
+.gap8 { gap:8px; } .gap10 { gap:10px; } .pb8 { padding-bottom:8px; }
+.grid-status { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:14px; }
+.grid-cats { display:grid; grid-template-columns:1fr; gap:10px; }
+.grid-measures { display:grid; grid-template-columns:1fr; gap:8px; padding-bottom:8px; }
+.chips { display:flex; gap:6px; overflow-x:auto; padding-bottom:6px; -webkit-overflow-scrolling:touch; }
+.chip { border:1px solid #E4DDD9; background:#fff; color:#6E625E; font-size:12px; font-weight:600; padding:7px 12px;
+  border-radius:999px; white-space:nowrap; cursor:pointer; flex-shrink:0; font-family:inherit; }
+.chip.on { background:var(--red); border-color:var(--red); color:#fff; }
+.chip:disabled { color:#C9C2BE; cursor:default; }
+.pill { font-weight:700; padding:4px 10px; border-radius:999px; white-space:nowrap; }
+.rowbtn { width:100%; border:none; background:none; padding:13px 14px; display:flex; align-items:center; gap:12px;
+  cursor:pointer; text-align:left; font-family:inherit; color:inherit; }
+.dot { width:8px; height:8px; border-radius:99px; flex-shrink:0; }
+.mgrid { display:grid; grid-template-columns:repeat(6,1fr); gap:4px; margin-top:4px; }
+.mlab { font-size:10px; color:#A89C97; font-weight:600; } .mval { font-size:10.5px; font-weight:600; }
+.notebox { margin-top:10px; font-size:12px; color:#6E625E; background:#FAF7F5; border-radius:10px; padding:9px 11px; line-height:1.45; }
+.legend { display:flex; gap:12px; flex-wrap:wrap; margin:0 4px 10px; font-size:10.5px; color:#6E625E; font-weight:600; }
+.legend span { display:inline-flex; align-items:center; gap:4px; }
+.sw { width:11px; height:11px; border-radius:3px; display:inline-block; }
+.hm { min-width: calc(150px + 36 * 18px); }
+.hmname { width:150px; flex-shrink:0; position:sticky; left:0; background:#fff; z-index:2; font-size:10px; color:#4A403C;
+  padding-right:8px; line-height:1.15; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.hmname.b { font-weight:700; color:var(--ink); font-size:10.5px; }
+.hmyear { width:216px; font-family:Sora; font-size:11px; font-weight:700; color:var(--red); border-bottom:2px solid #F1ECE9;
+  padding-bottom:2px; text-align:center; }
+.hmmon { width:18px; font-size:8.5px; color:#A89C97; text-align:center; font-weight:600; }
+.hmcell { width:16px; height:16px; margin:1px; border-radius:3px; cursor:pointer; flex-shrink:0; }
+.hmgroup { position:sticky; left:0; font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+  color:var(--dim); margin:8px 0 4px; background:#fff; width:150px; z-index:2; }
+.cta { width:100%; border:none; background:var(--red); color:#fff; font-family:Sora; font-weight:700; font-size:14px;
+  padding:13px 0; border-radius:12px; cursor:pointer; }
+.cta.shadow { box-shadow:0 6px 18px rgba(164,1,35,.3); font-size:15px; padding:15px 0; border-radius:14px; }
+.cta2 { width:100%; border:1.5px solid var(--red); background:#fff; color:var(--red); font-family:Sora; font-weight:700;
+  font-size:13px; padding:11px 0; border-radius:12px; cursor:pointer; margin-top:8px; }
+.sel { border:1.5px solid #E4DDD9; border-radius:10px; padding:8px 10px; font-size:13px; font-family:inherit; background:#fff; }
+.numin { width:70px; padding:8px; border:1.5px solid #E4DDD9; border-radius:10px; font-size:13px; font-weight:600;
+  text-align:right; font-family:inherit; }
+.nabtn { border:1px solid #E4DDD9; background:#fff; color:#8A7E7A; font-size:10px; font-weight:700; padding:6px 8px;
+  border-radius:8px; cursor:pointer; }
+.nabtn[data-on="true"] { background:#6E625E; color:#fff; }
+.minibtn { border:1px solid #E4DDD9; background:#fff; color:#6E625E; font-size:11px; font-weight:700; padding:6px 10px;
+  border-radius:8px; cursor:pointer; white-space:nowrap; flex-shrink:0; }
+.minibtn.warn { color:#8E0E1F; border-color:#F0CDD2; }
+.okmsg { font-size:12px; color:#0E8A4D; font-weight:600; text-align:center; margin-top:8px; background:#E5F4EC;
+  border-radius:10px; padding:8px 10px; }
+.errmsg { font-size:12px; color:#8E0E1F; font-weight:600; margin-bottom:10px; }
+.logincard { background:#fff; border-radius:22px; padding:28px 24px; width:100%; max-width:380px;
+  box-shadow:0 8px 30px rgba(28,20,22,.1); display:flex; flex-direction:column; align-items:center; text-align:center; }
+.login-in { width:100%; border:1.5px solid #E4DDD9; border-radius:12px; padding:12px 14px; font-size:14px;
+  font-family:inherit; margin-bottom:10px; }
+.tabbar { position:fixed; bottom:0; left:50%; transform:translateX(-50%); width:100%; max-width:430px; background:#fff;
+  border-top:1px solid var(--line); display:flex; padding:8px 4px calc(10px + env(safe-area-inset-bottom)); z-index:20; }
+.tabbtn { flex:1; border:none; background:none; cursor:pointer; display:flex; flex-direction:column; align-items:center;
+  gap:3px; padding:4px; color:#A89C97; font-family:inherit; }
+.tabbtn span { font-size:10px; font-weight:700; font-family:Sora; }
+.tabbtn.on { color:var(--red); }
+
+/* ---- tablet ≥768px ---- */
+@media (min-width:768px) {
+  .app { max-width:760px; }
+  .content { padding:8px 24px 40px; }
+  .grid-status { grid-template-columns:repeat(4,1fr); }
+  .grid-cats { grid-template-columns:1fr 1fr; }
+  .tabbar { position:sticky; bottom:auto; top:62px; left:auto; transform:none; max-width:none; border-top:none;
+    border-bottom:1px solid var(--line); padding:6px 16px 10px; gap:6px; background:rgba(246,243,241,.93);
+    backdrop-filter:blur(10px); z-index:9; }
+  .tabbtn { flex:0 0 auto; flex-direction:row; gap:7px; padding:8px 16px; border-radius:999px; background:#fff;
+    border:1px solid #E4DDD9; }
+  .tabbtn.on { background:var(--red); border-color:var(--red); color:#fff; }
+  .tabbtn span { font-size:12px; }
+  .hmcell { width:19px; height:19px; } .hmmon { width:21px; } .hmyear { width:252px; }
+  .hmname { width:210px; } .hmgroup { width:210px; }
+  .hm { min-width: calc(210px + 36 * 21px); }
+  .mgrid { grid-template-columns:repeat(12,1fr); }
+  .big { font-size:60px; }
+}
+/* ---- desktop ≥1100px ---- */
+@media (min-width:1100px) {
+  .app { max-width:1020px; }
+  .grid-measures { grid-template-columns:1fr 1fr; gap:10px; }
+}
+.lockbtn { width:36px; height:36px; border-radius:99px; background:#fff; color:#8A7E7A; border:1px solid #E4DDD9;
+  cursor:pointer; display:grid; place-items:center; flex-shrink:0; }
+.overlay { position:fixed; inset:0; background:rgba(28,20,22,.45); z-index:50; display:flex; align-items:center;
+  justify-content:center; padding:20px; }
+.modal { background:#fff; border-radius:20px; padding:22px 20px; width:100%; max-width:360px;
+  box-shadow:0 12px 40px rgba(28,20,22,.25); }
+.loginpill { display:inline-flex; align-items:center; gap:5px; border:1px solid #E4DDD9; background:#fff; color:#6E625E;
+  font-family:Sora; font-weight:700; font-size:11.5px; padding:8px 13px; border-radius:999px; cursor:pointer; flex-shrink:0; }
+.modal { position:relative; }
+.modalx { position:absolute; top:10px; right:12px; border:none; background:#F6F3F1; color:#6E625E; width:28px; height:28px;
+  border-radius:99px; cursor:pointer; font-size:13px; font-weight:700; line-height:1; }
+
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel" data-presets="react">
+/* ================== CONFIGURATION ==================
+   No setup needed to run on built-in data or to load an
+   Excel workbook from the device. The four IDs below are
+   only for the optional SharePoint live connection (see
+   setup guide). */
+const CONFIG = {
+  tenantId: "",
+  clientId: "",
+  siteHostname: "myvmgroup.sharepoint.com",
+  sitePath: "/sites/Operations",
+  workbookPath: "/Shared Documents/SLA/VMBS_Operations_SLA_Tracker.xlsx",
+  keySheet: "Key Processes & SLA 2026",
+  histSheet: "Historical Trend 2024-2026",
+};
+/* ==================================================== */
+
+const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+const STATUS = {
+  on:     { label: "On Track",         color: "#0E8A4D", bg: "#E5F4EC" },
+  margin: { label: "Within Margin",    color: "#A07208", bg: "#FBF2DC" },
+  off:    { label: "Off Track",        color: "#C75F00", bg: "#FCEBD9" },
+  way:    { label: "Way Below Target", color: "#8E0E1F", bg: "#F9E2E5" },
+};
+const CATS = {
+  TPE: "Transaction Processing",
+  BSS: "Business Support Services",
+  SRP: "Service Request Processing",
+  PEE: "Process Effectiveness",
+};
+const DEADLINES = ["Mon 9 Feb 2026","Mon 9 Mar 2026","Mon 13 Apr 2026","Mon 11 May 2026","Mon 8 Jun 2026","Mon 13 Jul 2026","Mon 10 Aug 2026","Mon 14 Sep 2026","Mon 12 Oct 2026","Mon 9 Nov 2026","Mon 14 Dec 2026","Mon 11 Jan 2027"];
+
+/* 40 published measures · Jan–May 2026 actuals from Key Processes & SLA */
+const DATA = [
+  { id:1, cat:"TPE", name:"Trades settled within SLA", owner:"Cavine Jackson", target:.9999, m:[1,.98,.98,1,1] },
+  { id:2, cat:"TPE", name:"Verified trades in COIQ — non-coupon", owner:"Cavine Jackson", target:.9999, m:[1,.98,.98,1,1] },
+  { id:3, cat:"TPE", name:"Verified trades in COIQ — coupon", owner:"Cavine Jackson", target:.9999, m:[1,.95,1,.98,.98] },
+  { id:4, cat:"TPE", name:"Member payments completed within SLA", owner:"Cavine Jackson", target:.9999, m:[.8561,.9037,.8912,.9129,.9636] },
+  { id:5, cat:"TPE", name:"Incoming payments received & processed", owner:"Cavine Jackson", target:.9999, m:[.9322,.9767,.9917,.98,.9907] },
+  { id:6, cat:"TPE", name:"Outgoing payments received & processed", owner:"Cavine Jackson", target:.9999, m:[.9447,.994,.9853,.9967,.9698] },
+  { id:7, cat:"TPE", name:"Incoming BOJ RTGS matched to APS", owner:"Cavine Jackson", target:.9999, m:[.932,.94,.98,1,1] },
+  { id:8, cat:"TPE", name:"Trades paired with securities", owner:"Cavine Jackson", target:.9999, m:[1,.98,1,1,1] },
+  { id:9, cat:"TPE", name:"Daily Egate (FX) net open position", owner:"Cavine Jackson", target:.9999, m:[null,null,.9523,1,1] },
+  { id:10, cat:"TPE", name:"Daily FX surrender of funds to BOJ", owner:"Cavine Jackson", target:.9999, m:[1,1,1,1,1] },
+  { id:11, cat:"TPE", name:"Broker reconciliations completed on time", owner:"Cavine Jackson", target:.9999, m:[.969,.98,.9829,1,.98] },
+  { id:12, cat:"TPE", name:"FX trades settled on time", owner:"Cavine Jackson", target:.9999, m:[.99,.99,.98,.99,.99] },
+  { id:13, cat:"TPE", name:"Settled treasury items to GL within 5 days", owner:"Cavine Jackson", target:.85, m:[.99,.99,.95,.99,.99] },
+  { id:14, cat:"TPE", name:"Securities holdings transferred to CSD", owner:"Cavine Jackson", target:.9999, m:[null,null,1,1,1] },
+  { id:15, cat:"BSS", name:"Loans in funding disbursed", owner:"Lesa Robinson", target:.9999, m:[.97,.98,1,1,1] },
+  { id:16, cat:"BSS", name:"Private insurance portfolio with coverage", owner:"Lesa Robinson", target:.9999, m:[.95,.905,.8,1,1], note:"Awaiting endorsements from insurance companies." },
+  { id:17, cat:"BSS", name:"Peril claims submitted within 2 days", owner:"Lesa Robinson", target:.9999, m:[1,.97,1,1,1] },
+  { id:18, cat:"BSS", name:"Death claims submitted within 2 days", owner:"Lesa Robinson", target:.9999, m:[1,1,1,.8,1] },
+  { id:19, cat:"BSS", name:"Insurance on peril & GMPI within 5 days", owner:"Lesa Robinson", target:.9999, m:[.98,.98,.98,.9,.95], note:"Loss of the team member designated to insurance and renewals." },
+  { id:20, cat:"BSS", name:"Communications dispatched within 5 days", owner:"Lesa Robinson", target:.9999, m:[.96,.95,.86,.86,.81] },
+  { id:21, cat:"BSS", name:"New accounts from mail within 2 days", owner:"Lesa Robinson", target:.9999, m:[.89,.7,.99,.99,.68] },
+  { id:22, cat:"BSS", name:"CIF maintenances within 2 days", owner:"Lesa Robinson", target:.9999, m:[.91,.84,.99,.99,.7] },
+  { id:23, cat:"BSS", name:"Auto & unsecured loans within 22 bus. hrs", owner:"Lesa Robinson", target:.9999, m:[.97,.99,1,.9999,1] },
+  { id:24, cat:"BSS", name:"Reloans disbursed within 8 bus. hrs", owner:"Lesa Robinson", target:.9999, m:[1,1,1,.9999,1] },
+  { id:25, cat:"BSS", name:"Mortgage loans disbursed within 72 hrs", owner:"Lesa Robinson", target:.9999, m:[.95,.97,1,.9999,1] },
+  { id:26, cat:"BSS", name:"Monthly payment advice letters within 5 days", owner:"Lesa Robinson", target:.9999, m:[.48,.57,.87,.83,.975] },
+  { id:27, cat:"BSS", name:"Mail withdrawal requests within 2 days", owner:"Lesa Robinson", target:.9999, m:[1,1,1,1,1] },
+  { id:28, cat:"BSS", name:"Mail cheque batches within 1.5 hrs", owner:"Lesa Robinson", target:.9999, m:[1,1,1,1,1] },
+  { id:29, cat:"SRP", name:"Research requests answered within 24 hrs", owner:"Lesa Robinson", target:.9999, m:[1,1,1,1,1] },
+  { id:30, cat:"SRP", name:"Title requests satisfied within 24 hrs", owner:"Lesa Robinson", target:.9999, m:[.9705,.9421,.9805,.99,.8252], note:"Vault custodian on 10-day leave in May." },
+  { id:31, cat:"SRP", name:"Private insurance renewal reminders", owner:"Lesa Robinson", target:.9999, m:[1,1,1,1,1] },
+  { id:32, cat:"SRP", name:"EIM update exceptions cleared same day", owner:"Lesa Robinson", target:.9999, m:[1,1,1,1,1] },
+  { id:33, cat:"SRP", name:"Closed loan & loan-of-title files within 5 days", owner:"Lesa Robinson", target:.9999, m:[.75,.83,.78,.9,.74], note:"Input from other units required to complete files, delaying processing." },
+  { id:34, cat:"SRP", name:"Current-year recons within $100M threshold", owner:"Karlene Maragh", target:.85, m:[null,null,null,null,.85] },
+  { id:35, cat:"SRP", name:"Branch support tickets within SLA", owner:"Karlene Maragh", target:.9999, m:[.79,.89,.92,.97,.98] },
+  { id:36, cat:"SRP", name:"Branch query tickets within SLA", owner:"Sandra Davis-Lewis", target:.9999, m:[1,1,1,1,1] },
+  { id:37, cat:"SRP", name:"Policies reviewed & approved", owner:"Sandra Davis-Lewis", target:.85, m:[1,1,1,1,1] },
+  { id:38, cat:"PEE", name:"Process control compliance — defects by period", owner:"Sanchia Henry", target:.9999, m:[.976,.971,.968,.97,.979] },
+  { id:39, cat:"PEE", name:"Adherence to operational standards (branches)", owner:"Sanchia Henry", target:.9999, m:[.9234,.9164,.9192,.9012,.9277], note:"Q-trac wait times, service abandonment, and low adherence to sales & service standards." },
+  { id:40, cat:"PEE", name:"Recurring defects compliance (branches)", owner:"Sanchia Henry", target:.9999, m:[1,.992,.988,.99,.99] },
+];
+
+/* Historical Trend 2024–2026 sheet · 29 cols = Jan-24 … May-26 */
+const HAVG = [.9546,.93,.9423,.9008,.9108,.9321,.9474,.9629,.9798,.9772,.967,.9661,.9512,.9618,.938,.9585,.9686,.9504,.9621,.9589,.9455,.9442,.9483,.9436,.9233,.935,.9591,.9608,.9461];
+const N = null;
+const HIST = [
+  { g:"Tracked across 2024 – 2026", rows:[
+    ["% Trades settled within SLA",1,[1,.9999,.99,1,.99,1,1,1,1,1,1,1,.99,.99,.99,1,.99,.99,.99,1,1,1,1,1,1,.98,.98,1,1]],
+    ["Incoming payments received & processed",5,[N,N,N,N,.99,.987,.991,.995,N,.99,.993,.991,.991,.992,.988,.99,.992,.991,.991,.992,.991,.995,.992,.992,.9322,.9767,.9917,.98,.9907]],
+    ["Branch query tickets within SLA",36,[1,1,1,1,.95,.83,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]],
+    ["Loans in funding disbursed",15,[N,1,1,1,.98,1,1,1,1,1,1,.9999,.99,1,1,1,1,.99,1,.99,.98,.91,.97,.95,.97,.98,1,1,1]],
+    ["Recurring defects compliance",40,[N,N,N,N,.991,.987,.989,.99,.987,.986,.983,.984,1,.994,.99,.988,.983,.99,.988,.986,.98,.983,.98,.98,1,.992,.988,.99,.99]],
+    ["Outgoing payments received & processed",6,[N,N,N,N,.964,.976,.98,.998,.99,.949,.982,.9914,.998,.992,.979,.976,.98,.99,.981,.993,.949,.981,.964,.971,.9447,.994,.9853,.9967,.9698]],
+    ["Process control compliance — defects",38,[N,N,N,N,.98,.975,.98,.982,.976,.974,.97,.968,.972,.98,.967,.97,.966,.964,.972,.967,.971,.971,.969,.962,.976,.971,.968,.97,.979]],
+    ["Policies reviewed & approved",37,[N,N,N,.25,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]],
+    ["Title requests within 24 hrs",30,[N,N,N,N,.988,.97,.97,.97,.99,.98,.98,.98,.98,.982,.93,.87,.93,.823,.906,.946,.929,.99,.944,.904,.9705,.9421,.9805,.99,.8252]],
+    ["Member payments within SLA",4,[N,N,N,N,N,N,N,N,.979,.965,.975,.9482,.945,.972,.972,.974,.967,.944,.956,.957,.924,.9,.914,.8,.8561,.9037,.8912,.9129,.9636]],
+    ["Branch support tickets within SLA",35,[.88,.75,.82,.83,.84,.85,.83,.89,.94,.9,.9,.9,.91,.91,.91,.95,.96,.85,.83,.79,.91,.89,.83,.78,.79,.89,.92,.97,.98]],
+    ["Recons within $100M threshold",34,[.857,.66,.88,1,.875,.75,.88,1,1,1,.75,1,1,1,.88,.88,.88,.88,.75,.75,.75,.75,.75,N,.8571,.88,.846,.85,.85]],
+    ["COIQ verified — non-coupon",2,[1,1,1,1,1,1,1,1,1,1,1,.99,1,1,1,.99,.99,.99,.99,1,1,.99,1,1,1,.98,.98,1,1]],
+    ["COIQ verified — coupon",3,[1,1,.9,.95,.99,1,1,1,.99,1,1,.99,.99,.99,.99,.99,.99,.98,.99,1,1,.98,1,1,1,.95,1,.98,.98]],
+    ["Trades paired with securities",8,[N,N,N,N,0,0,0,0,0,0,0,1,1,1,1,1,1,.99,1,1,1,1,1,1,1,.98,1,1,1]],
+    ["BOJ RTGS matched to APS (STP)",7,[N,N,N,N,.011,0,0,N,0,N,N,1,.998,1,1,1,1,.99,1,1,1,.95,1,1,.932,.94,.98,1,1]],
+  ]},
+  { g:"Introduced 2025", rows:[
+    ["Adherence to operational standards",39,[.966,.966,.964,.97,.966,.964,.972,.967,.971,.971,.9132,.9105,.913,.911,.903,.901,.936,.933,.927,.921,.93,.927,.931,.921,.9234,.9164,.9192,.9012,.9277]],
+    ["Mail withdrawal requests",27,[N,N,N,N,N,N,N,N,N,N,N,N,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]],
+    ["EIM update exceptions cleared",32,[N,N,N,N,N,N,N,N,N,N,N,N,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]],
+    ["Daily Egate (FX) net open position",9,[N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,1,1,1,1,1,1,1,1,N,N,.9523,1,1]],
+    ["Daily FX surrender to BOJ",10,[N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,1,1,1,1,1,1,1,1,1,1,1,1,1]],
+    ["Securities transferred to CSD",14,[N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,1,1,.99,1,1,1,1,1,N,N,1,1,1]],
+    ["Peril claims submitted",17,[N,N,N,N,N,N,N,N,N,N,N,N,1,1,1,1,1,1,1,1,1,1,.99,.98,1,.97,1,1,1]],
+    ["Mail cheque batches",28,[N,N,N,N,N,N,N,N,N,N,N,N,.99,.99,.99,.99,1,1,1,1,1,1,1,1,1,1,1,1,1]],
+    ["Research requests",29,[N,N,N,N,N,N,N,N,N,N,N,N,.994,.987,.986,.99,1,.997,.993,.994,1,.991,.991,1,1,1,1,1,1]],
+    ["FX trades settled on time",12,[N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,1,.99,.99,.99,.99,.99,.99,.99,.99,.99,.98,.99,.99]],
+    ["Mortgage loans disbursed",25,[N,N,N,N,N,N,N,N,N,N,N,N,.969,1,1,1,.97,1,1,1,1,1,.97,.97,.95,.97,1,.9999,1]],
+    ["Treasury items to GL within 5 days",13,[N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,.96,.98,.99,.99,.95,.99,.99,.99,.99,.95,.99,.99]],
+    ["Auto & unsecured loans",23,[N,N,N,N,N,N,N,N,N,N,N,N,1,1,1,1,1,1,1,1,1,.86,.94,.94,.97,.99,1,.9999,1]],
+    ["Insurance on peril & GMPI",19,[N,N,N,N,N,N,N,N,N,N,N,N,.98,.95,.98,.98,.98,.9,.99,1,.99,.99,.95,.99,.98,.98,.98,.9,.95]],
+    ["Broker reconciliation",11,[N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,1,.962,.93,.944,.971,.98,.986,.972,.969,.98,.9829,1,.98]],
+    ["Reloans disbursed",24,[N,N,N,N,N,N,N,N,N,N,N,N,1,1,1,1,1,.85,1,.94,.96,.88,1,.95,1,1,1,.9999,1]],
+    ["Private insurance coverage",16,[N,N,N,N,N,N,N,N,N,N,N,N,.85,1,.98,1,.92,.92,.99,1,1,.7,.9,.98,.95,.905,.8,1,1]],
+    ["Potential loss within financial threshold",0,[N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,.912,.922,.87,.928,.944,.949,N,N,N,N,N,N,N]],
+    ["Unreconciled positions on broker recons",0,[N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,.97,.97,.97,.98,.98,1,.98]],
+    ["Death claims submitted",18,[N,N,N,N,N,N,N,N,N,N,N,N,1,.87,.57,1,1,1,1,.67,.86,1,.86,.9,1,1,1,.8,1]],
+    ["CIF maintenances",22,[N,N,N,N,N,N,N,N,N,N,N,N,.95,.9,.66,.82,.99,.99,.96,.99,.72,.94,.93,.87,.91,.84,.99,.99,.7]],
+    ["Communications dispatched",20,[N,N,N,N,N,N,N,N,N,N,N,N,.75,.88,.9,.95,.86,.8,.9,.88,.83,.85,.91,.87,.96,.95,.86,.86,.81]],
+    ["New accounts from mail",21,[N,N,N,N,N,N,N,N,N,N,N,N,.95,.9,.75,.74,.87,.94,.91,.91,.59,.93,.89,.82,.89,.7,.99,.99,.68]],
+    ["Closed loan & loan-of-title files",33,[N,N,N,N,N,N,N,N,N,N,N,N,.33,.67,.74,.85,.81,.7,.88,.92,.91,.9,.89,.9,.78,.92,.89,.95,.74]],
+    ["Monthly payment advice letters",26,[N,N,N,N,N,N,N,N,N,N,N,N,.95,.88,.9,.83,.9,.79,.83,.91,.75,.64,.53,.45,.48,.57,.87,.83,.975]],
+  ]},
+  { g:"Retired after 2024", rows:[
+    ["Non-staff operating expenses vs budget",0,[.925,.85,.86,.93,1.01,.76,.79,.89,1.11,1.22,1.22,1.04,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N]],
+    ["Staff costs vs budget",0,[.97,1.04,.96,.94,.9,.89,.88,.87,.87,.86,.91,.92,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N]],
+    ["Key VMBS SLAs meeting turnaround",0,[.93,.9489,.991,.94,.941,.938,.95,.954,.95,.932,.941,.9079,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N]],
+    ["Risk within tolerance",0,[N,N,N,N,.94,.9,.841,.826,.884,.84,.855,.8551,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N,N]],
+  ]},
+];
+
+/* ---------- helpers ---------- */
+const pct = (v, d = 1) => (v == null || v === "NA") ? "—" : (v * 100).toFixed(d).replace(/\.0+$/, "") + "%";
+const stat = (a, t) => (a == null || a === "NA") ? null : a >= t ? "on" : t - a <= 0.03 ? "margin" : t - a <= 0.10 ? "off" : "way";
+const band = v => v == null ? "#EFE9E6" : v >= .95 ? "#0E8A4D" : v >= .90 ? "#E3B341" : v >= .80 ? "#E07B00" : "#B5142A";
+  const bandLabel = v => v == null ? "Not tracked" : v >= .95 ? "World Class" : v >= .90 ? "Industry Average" : v >= .80 ? "Non-Competitive" : "Unacceptable";
+const ls = {
+  get(k, fb) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch (e) { return fb; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+};
+const inSandbox = () => { try { return window.self !== window.top; } catch (e) { return true; } };
+function dl(content, name, type) {
+  const b = content instanceof Blob ? content : new Blob([content], { type });
+  const url = URL.createObjectURL(b);
+  if (inSandbox()) {
+    // Chat-preview / embedded mode: direct downloads are blocked by the sandbox,
+    // so open the file in a new tab where the user can view and save it.
+    const w = window.open(url, "_blank");
+    if (!w) window.alert("Pop-up blocked — please allow pop-ups for this page, or open " +
+      "VMBS_SLA_Monitor.html directly in Safari, Chrome or Edge for one-click downloads.");
+  } else {
+    const a = document.createElement("a");
+    a.href = url; a.download = name; a.rel = "noopener";
+    document.body.appendChild(a); a.click(); a.remove();
+  }
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+const safePDF = fn => { try {
+  if (!window.jspdf || !window.jspdf.jsPDF) throw new Error("the PDF library has not loaded — check internet access");
+  fn();
+} catch (e) { window.alert("PDF generation failed — " + e.message + ".\n\nIf the PDF library hasn't loaded, check your internet connection and refresh. For one-click downloads, open VMBS_SLA_Monitor.html directly in Safari, Chrome or Edge."); } };
+const safeCSV = fn => { try { fn(); }
+  catch (e) { window.alert("CSV generation failed — " + e.message + ".\n\nFor one-click downloads, open the app file directly in a browser."); } };
+const CATLIST = ["TPE", "BSS", "SRP", "POL", "PEE", "OTH"];
+const CATNAME = { ...CATS, POL: "Policies", OTH: "Other" };
+const CATFULL = { TPE: "Transaction Processing Efficiency", BSS: "Business Support Services",
+  SRP: "Service Request Processing (Responsiveness)", POL: "Policies", PEE: "Process Effectiveness / Efficacy", OTH: "Other" };
+const OWNER_TITLES = {
+  "Cavine Jackson": "Manager, Treasury Operations and Payments",
+  "Lesa Robinson": "Manager, Business Support Services",
+  "Karlene Maragh": "Manager, Accounting and Support",
+  "Sandra Davis-Lewis": "Manager, Operations Support and Business Continuity Services",
+  "Sanchia Henry": "Acting Manager, Operations Monitoring and Quality Control",
+};
+const DESC = {
+  1:"The percentage of trades settled on the agreed trade settlement dates",
+  2:"The percentage of OPICS deals verified in the respective OPICS queues — non-coupons",
+  3:"The percentage of OPICS deals verified in the respective OPICS queues — coupons",
+  4:"Percentage of payments completed within SLA during the month",
+  5:"Percentage volume of incoming payments received and processed during the month",
+  6:"Percentage volume of outgoing payments received and processed during the month",
+  7:"Incoming RTGS transactions captured as processed in VMBS APS during the month",
+  8:"Percentage of trades paired during the month",
+  9:"Percentage of daily submission of the Egate (FX) net open position",
+  10:"Percentage of daily FX submissions of surrender of funds to the BOJ",
+  11:"Percentage of broker reconciliations finalised within the SLA",
+  12:"Percentage of FX trades settled within the agreed settlement period",
+  13:"Percentage of settled treasury transactions posted to the GL within 5 business days",
+  14:"Share of securities transferred via the CSD within the expected time",
+  15:"The percentage of loans disbursed against loans placed in the funding queue",
+  16:"% of private insurance portfolio with coverage in place",
+  17:"% of peril claims submitted within 2 days of receipt of all required documents",
+  18:"% of death claims submitted within 2 days of receipt of all required documents",
+  19:"% of insurance on peril (securities) and GMPI effected within 5 days of disbursement",
+  20:"Responses to mail requests (notice to repay, special payment, return cheques, death files etc) within 5 days",
+  21:"% of new accounts from mail requests processed within 2 days",
+  22:"% of CIF maintenances processed within 2 days of receipt",
+  23:"Auto and unsecured loans disbursed within 22 business hours of receipt",
+  24:"Reloans disbursed within 8 business hours of receipt",
+  25:"Mortgage loans disbursed within 72 hours of receipt",
+  26:"% of letters for monthly payment advice dispatched within 5 days of disbursement",
+  27:"% of mail withdrawal requests processed within 2 days",
+  28:"% of mail cheque batches created, confirmed and assigned within 1.5 hours of receipt",
+  29:"Respond to requests for research within 24 hours of receipt",
+  30:"Percentage of processed title requests during the month",
+  31:"Renewal reminders sent the month prior to renewal",
+  32:"% of EIM updates exceptions cleared same business day",
+  33:"% of closed loan and loan-of-title files processed within 5 days of receipt",
+  34:"Percentage of VMBS reconciliations with an unreconciled balance of $100M or less",
+  35:"Percentage of branch/SBU requests processed within the stipulated SLA",
+  36:"Percentage of branch/SBU queries processed within the stipulated SLA",
+  37:"Policies reviewed and approved as a percentage of the YTD total count",
+  38:"Defect percentage by period",
+  39:"% adherence to operational standards (VMBS branches)",
+  40:"Percentage rate of recurring defects",
+};
+const { useState, useEffect, useMemo } = React;
+const DATA_YEAR = Number((CONFIG.keySheet.match(/20\d\d/) || [2026])[0]);
+
+function VMLogo({ h = 26 }) {
+  return (
+    <svg height={h} viewBox="0 0 500 340" fill="none" style={{ display: "block", flexShrink: 0 }}>
+      <path d="M14 130 L48 74 L112 280 L213 76 L272 204 L341 76 L446 280 L486 216"
+        stroke="#E4012B" strokeWidth="42" strokeLinejoin="miter" strokeMiterlimit="3" />
+    </svg>
+  );
+}
+function Spark({ m, target, color, h = 56 }) {
+  const W = 250, H = 56, pad = 6, n = m.length;
+  const present = m.filter(v => typeof v === "number");
+  if (!present.length) return null;
+  const lo = Math.min(...present, target) - 0.02, hi = Math.max(...present, target) + 0.02;
+  const x = i => pad + i * (W - 2 * pad) / Math.max(n - 1, 1);
+  const y = v => H - pad - (v - lo) / (hi - lo) * (H - 2 * pad);
+  let path = "", started = false;
+  m.forEach((v, i) => { if (typeof v !== "number") { started = false; return; }
+    path += (started ? " L" : " M") + x(i).toFixed(1) + " " + y(v).toFixed(1); started = true; });
+  return (
+    <svg viewBox={"0 0 " + W + " " + H} preserveAspectRatio="none" style={{ width: "100%", height: h, display: "block" }}>
+      <line x1={pad} x2={W - pad} y1={y(target)} y2={y(target)} stroke="#C9C2BE" strokeWidth="1" strokeDasharray="3 4" vectorEffect="non-scaling-stroke" />
+      <path d={path} fill="none" stroke={color} strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" vectorEffect="non-scaling-stroke" />
+    </svg>
+  );
+}
+function Pill({ s, small }) {
+  if (!s) return <span style={{ fontSize: 11, color: "#A89C97" }}>Not tracked</span>;
+  const st = STATUS[s];
+  return <span className="pill" style={{ background: st.bg, color: st.color, fontSize: small ? 10 : 11 }}>{st.label}</span>;
+}
+function Chip({ children, active, onClick, color, disabled }) {
+  return <button className={"chip" + (active ? " on" : "")} disabled={disabled}
+    style={active && color ? { background: color, borderColor: color } : null} onClick={onClick}>{children}</button>;
+}
+
+/* ---------- Microsoft Graph (SharePoint) ---------- */
+async function graphLoad(setStatus) {
+  if (!CONFIG.clientId || !CONFIG.tenantId) throw new Error("not-configured");
+  setStatus("Signing in to Microsoft 365…");
+  const app = new msal.PublicClientApplication({
+    auth: { clientId: CONFIG.clientId, authority: "https://login.microsoftonline.com/" + CONFIG.tenantId,
+      redirectUri: window.location.origin + window.location.pathname },
+    cache: { cacheLocation: "sessionStorage" },
+  });
+  await app.initialize();
+  let account = app.getAllAccounts()[0];
+  if (!account) { const res = await app.loginPopup({ scopes: ["Sites.Read.All"] }); account = res.account; }
+  const tok = await app.acquireTokenSilent({ scopes: ["Sites.Read.All"], account })
+    .catch(() => app.acquireTokenPopup({ scopes: ["Sites.Read.All"] }));
+  const H = { Authorization: "Bearer " + tok.accessToken };
+  const g = async url => { const r = await fetch("https://graph.microsoft.com/v1.0" + url, { headers: H });
+    if (!r.ok) throw new Error("Graph " + r.status + " on " + url); return r.json(); };
+  setStatus("Locating workbook on SharePoint…");
+  const site = await g("/sites/" + CONFIG.siteHostname + ":" + CONFIG.sitePath);
+  const wb = "/sites/" + site.id + "/drive/root:" + encodeURI(CONFIG.workbookPath) + ":/workbook";
+  setStatus("Reading Key Processes & SLA 2026…");
+  const key = await g(wb + "/worksheets('" + encodeURIComponent(CONFIG.keySheet) + "')/usedRange?$select=values");
+  setStatus("Reading Historical Trend 2024-2026…");
+  let hist = null;
+  try { hist = await g(wb + "/worksheets('" + encodeURIComponent(CONFIG.histSheet) + "')/usedRange?$select=values"); } catch (e) {}
+  return { measures: parseKeySheet(key.values), hist: hist ? parseHistSheet(hist.values) : null };
+}
+function parseKeySheet(rows) {
+  const hi = rows.findIndex(r => r.some(c => String(c).trim() === "Key Processes"));
+  if (hi < 0) throw new Error("Header row not found on key sheet");
+  const head = rows[hi].map(c => String(c).trim());
+  const col = label => head.findIndex(h => h.toLowerCase().startsWith(label.toLowerCase()));
+  const cName = col("Key Processes"), cOwner = col("Owner"), cUnit = col("Unit"), cDesc = col("SLA Target"),
+    cTarget = col("YTD SLA % Target"), cPub = col("For Publication"), cCom = col("Comments");
+  const mCols = MONTHS.map((_, i) => head.findIndex(h => h.toLowerCase().startsWith(
+    ["january","february","march","april","may","june","july","august","september","october","november","december"][i])));
+  const num = v => { const n = parseFloat(v); return isNaN(n) ? (String(v).trim().toUpperCase() === "N/A" ? "NA" : null) : n; };
+  const catOf = u => { u = String(u || "").toLowerCase();
+    if (u.includes("treasury")) return "TPE";
+    if (u.includes("business support")) return "BSS";
+    if (u.includes("quality")) return "PEE";
+    if (u.includes("account") || u.includes("continuity")) return "SRP";
+    return "OTH"; };
+  const out = [];
+  rows.slice(hi + 1).forEach((r, i) => {
+    if (String(r[cPub]).trim().toUpperCase() !== "YES") return;
+    const name = String(r[cName] || "").trim(); if (!name) return;
+    out.push({ id: 1000 + i, cat: catOf(r[cUnit]), name, owner: String(r[cOwner] || "").trim() || "—",
+      d: cDesc >= 0 ? String(r[cDesc] || "").trim() : "",
+      target: num(r[cTarget]) || .9999, m: mCols.map(ci => ci >= 0 ? num(r[ci]) : null),
+      note: String(r[cCom] || "").trim() || undefined });
+  });
+  if (!out.length) throw new Error("No published rows found");
+  return out;
+}
+function parseHistSheet(rows) {
+  const hi = rows.findIndex(r => r.some(c => /jan-?24/i.test(String(c))));
+  if (hi < 0) return null;
+  const start = rows[hi].findIndex(c => /jan-?24/i.test(String(c)));
+  const grab = r => { const vals = [];
+    for (let c = start; c < start + 36; c++) { const n = parseFloat(r[c]); vals.push(isNaN(n) ? null : n); }
+    return vals; };
+  let avg = null;
+  const groups = []; let cur = { g: "Workbook history", rows: [] };
+  rows.slice(hi + 1).forEach(r => {
+    const a = String(r[0] || ""), name = String(r[1] || "").trim();
+    if (/measures/i.test(a) && !name) { if (cur.rows.length) groups.push(cur); cur = { g: a.trim(), rows: [] }; return; }
+    if (/monthly actual/i.test(name)) { avg = grab(r); return; }
+    if (!name || /monthly target|performance score|status key/i.test(name)) return;
+    const vals = grab(r);
+    if (vals.some(v => v != null)) cur.rows.push([name, 0, vals]);
+  });
+  if (cur.rows.length) groups.push(cur);
+  return { groups: groups.length ? groups : null, avg };
+}
+
+/* ---------- PDF / CSV ---------- */
+function pdfHeader(doc, subtitle) {
+  doc.setFillColor(228, 1, 43); doc.rect(0, 0, doc.internal.pageSize.getWidth(), 24, "F");
+  doc.setTextColor(255, 255, 255); doc.setFontSize(12); doc.setFont(undefined, "bold");
+  doc.text("VM BUILDING SOCIETY — OPERATIONS DIVISION SLA MONITOR", 14, 10);
+  doc.setFontSize(9); doc.setFont(undefined, "normal"); doc.text(subtitle, 14, 17);
+  doc.setTextColor(28, 20, 22);
+}
+function pdfFooter(doc) {
+  const w = doc.internal.pageSize.getWidth(), h = doc.internal.pageSize.getHeight();
+  doc.setFontSize(7); doc.setTextColor(140, 130, 126);
+  doc.text("Status key — On Track: at/above target · Within Margin: ≤3% below · Off Track: 3–10% below (commentary required) · Way Below: >10% below (action plan in 5 business days).", 14, h - 12, { maxWidth: w - 28 });
+  doc.text("Document owner: Nicola Anderson, COO · Generated " + new Date().toLocaleDateString("en-JM", { day: "numeric", month: "long", year: "numeric" }), 14, h - 6);
+}
+function downloadMonthPDF(measures, mi, avg, yr) {
+  const doc = new jspdf.jsPDF({ orientation: "landscape" });
+  pdfHeader(doc, "VMBS OPERATIONS DEPARTMENT — " + MONTHS[mi].toUpperCase() + " " + yr + " · Month in Review (SLA)");
+  const fills = { on: [223, 240, 227], margin: [251, 242, 220], off: [252, 235, 217], way: [249, 226, 229] };
+  const inks = { on: [14, 138, 77], margin: [160, 114, 8], off: [199, 95, 0], way: [142, 14, 31] };
+  const body = [];
+  let lastOwner = null;
+  CATLIST.forEach(c => {
+    measures.filter(it => it.cat === c).forEach((it, idx) => {
+      const a = it.m[mi], s = stat(a, it.target);
+      const tracker = it.owner !== lastOwner ? it.owner + (OWNER_TITLES[it.owner] ? "\n" + OWNER_TITLES[it.owner] : "") : "";
+      lastOwner = it.owner;
+      body.push([idx === 0 ? CATFULL[c] : "", it.name, it.d || "", tracker,
+        pct(it.target, 2), a === "NA" ? "N/A" : pct(a), s ? STATUS[s].label : "Not tracked"]);
+    });
+  });
+  const tAvg = measures.reduce((x, it) => x + it.target, 0) / Math.max(measures.length, 1);
+  const ytds = measures.map(it => { const v = it.m.slice(0, mi + 1).filter(x => typeof x === "number");
+    return v.length ? v.reduce((x, y) => x + y, 0) / v.length : null; }).filter(v => v != null);
+  const ytdAvg = ytds.length ? ytds.reduce((x, y) => x + y, 0) / ytds.length : null;
+  body.push(["", "", "", "Average:", pct(tAvg, 2), pct(avg), pct(ytdAvg)]);
+  doc.autoTable({
+    startY: 30, margin: { left: 14, right: 14 },
+    head: [["Category", "Key Measures", "Description", "Tracker", "Monthly Target", "Actual", "Status"]],
+    body,
+    styles: { fontSize: 7, cellPadding: 1.8, valign: "top" },
+    headStyles: { fillColor: [228, 1, 43], fontSize: 7.2 },
+    columnStyles: { 0: { cellWidth: 30, fontStyle: "bold" }, 1: { cellWidth: 46 }, 2: { cellWidth: 62 },
+      3: { cellWidth: 38 }, 4: { cellWidth: 16, halign: "right" }, 5: { cellWidth: 16, halign: "right" }, 6: { cellWidth: 24 } },
+    didParseCell: d => {
+      if (d.section !== "body") return;
+      const isAvg = d.row.index === body.length - 1;
+      if (isAvg) { d.cell.styles.fontStyle = "bold"; d.cell.styles.fillColor = [246, 243, 241]; return; }
+      if (d.column.index === 6) {
+        const key = Object.keys(STATUS).find(k => STATUS[k].label === d.cell.text[0]);
+        if (key) { d.cell.styles.fillColor = fills[key]; d.cell.styles.textColor = inks[key]; d.cell.styles.fontStyle = "bold"; }
+      }
+    },
+  });
+  let y = doc.lastAutoTable.finalY + 8;
+  const pageH = doc.internal.pageSize.getHeight();
+  if (y > pageH - 40) { doc.addPage(); y = 16; }
+  doc.setFontSize(8); doc.setFont(undefined, "bold"); doc.setTextColor(28, 20, 22);
+  doc.text("Status key", 14, y); y += 5; doc.setFont(undefined, "normal");
+  [["on", "Exceeding expectation"], ["margin", "Steady progress"], ["off", "Needs a boost"], ["way", "Critical attention needed"]].forEach(([k, d2]) => {
+    doc.setFillColor(...fills[k]); doc.rect(14, y - 3, 5, 4, "F");
+    doc.setTextColor(...inks[k]); doc.setFont(undefined, "bold"); doc.text(STATUS[k].label, 21, y);
+    doc.setTextColor(90, 80, 76); doc.setFont(undefined, "normal"); doc.text("— " + d2, 58, y);
+    y += 5.5;
+  });
+  pdfFooter(doc);
+  dl(doc.output("blob"), "VMBS_Operations_Month_In_Review_SLA_" + MONTHS[mi] + "_" + yr + ".pdf", "application/pdf");
+}
+function downloadRangePDF(measures, from, to, avgFn, yr) {
+  const doc = new jspdf.jsPDF({ orientation: "landscape" });
+  const span = MONTHS.slice(from, to + 1);
+  pdfHeader(doc, "VMBS OPERATIONS DEPARTMENT — " + MONTHS[from].toUpperCase() + " – " + MONTHS[to].toUpperCase() + " " + yr + " · Period report (SLA)");
+  doc.autoTable({
+    startY: 30, margin: { left: 14, right: 14 },
+    head: [["Key measure", "Manager", "Target", ...span, "Status (" + MONTHS[to] + ")"]],
+    body: measures.map(it => { const s = stat(it.m[to], it.target);
+      return [it.name, it.owner, pct(it.target, 2),
+        ...span.map((_, k) => { const v = it.m[from + k]; return v === "NA" ? "N/A" : v == null ? "—" : pct(v, 0); }),
+        s ? STATUS[s].label : "—"]; }),
+    styles: { fontSize: 6.6, cellPadding: 1.6 },
+    headStyles: { fillColor: [228, 1, 43], fontSize: 6.6 },
+    columnStyles: { 0: { cellWidth: 62 } },
+  });
+  let y = doc.lastAutoTable.finalY + 6;
+  doc.setFontSize(8); doc.setFont(undefined, "bold");
+  doc.text("Division average — " + span.map((mo, k) => mo + ": " + pct(avgFn(from + k))).join("   ·   "), 14, y, { maxWidth: 260 });
+  pdfFooter(doc);
+  dl(doc.output("blob"), "VMBS_Ops_SLA_Monitor_" + MONTHS[from] + "-" + MONTHS[to] + "_" + yr + ".pdf", "application/pdf");
+}
+function downloadCSVData(measures, from, to, label, yr) {
+  const esc = s => '"' + String(s).replace(/"/g, '""') + '"';
+  const lines = ["Category,Key Measure,Description,Tracker,Target %,Month,Actual %,Status"];
+  measures.forEach(it => { for (let mi = from; mi <= to; mi++) {
+    const a = it.m[mi], s = stat(a, it.target);
+    lines.push([esc(CATFULL[it.cat]), esc(it.name), esc(it.d || ""), esc(it.owner), (it.target * 100).toFixed(2),
+      MONTHS[mi] + " " + yr, a === "NA" ? "N/A" : typeof a === "number" ? (a * 100).toFixed(2) : "",
+      s ? STATUS[s].label : ""].join(","));
+  } });
+  dl(lines.join("\n"), "VMBS_Ops_SLA_" + label + "_" + yr + ".csv", "text/csv");
+}
+
+/* ---------- main app ---------- */
+function App() {
+  const [admin, setAdmin] = useState(() => { try { return sessionStorage.getItem("vmbs_admin") === "1" } catch (e) { return false } });
+  const [pwOpen, setPwOpen] = useState(false);
+  const [pwTry, setPwTry] = useState("");
+  const [pwErr, setPwErr] = useState("");
+  const [enteredBy, setEnteredBy] = useState(() => { try { return localStorage.getItem("vmbs_entered_by") || "" } catch (e) { return "" } });
+  const [tab, setTab] = useState("pulse");
+  const [adminPw, setAdminPw] = useState(() => ls.get("vmbs_admin_pw", "pa55w0rd"));
+  const [entries, setEntries] = useState({});
+  const [ovr, setOvr] = useState(() => ls.get("vmbs_admin_ovr", { renames: {}, retired: [], added: [], targets: {}, owners: {} }));
+  const [audit, setAudit] = useState(() => ls.get("vmbs_audit", []));
+  const [ext, setExt] = useState(() => ls.get("vmbs_workbook", null));
+  const [liveMsg, setLiveMsg] = useState("");
+  const [statusFilter, setStatusFilter] = useState(null);
+  const [catFilter, setCatFilter] = useState(null);
+  const [open, setOpen] = useState(null);
+  const [entryMonth, setEntryMonth] = useState(5);
+  const [entryOwner, setEntryOwner] = useState(null);
+  const [entryCat, setEntryCat] = useState(null);
+  const [draft, setDraft] = useState({});
+  const [saveMsg, setSaveMsg] = useState("");
+  const [repMode, setRepMode] = useState("month");
+  const [repM, setRepM] = useState(4);
+  const [repFrom, setRepFrom] = useState(0);
+  const [repTo, setRepTo] = useState(4);
+  const [cell, setCell] = useState(null);
+
+  const yr = (ext && ext.year) || DATA_YEAR;
+  const hmStart = yr - 2;
+  useEffect(() => { setEntries(ls.get("vmbs_entries_" + yr, {})); }, [yr]);
+
+  const log = (action) => { const next = [{ who: admin ? "Administrator" : (enteredBy.trim() || "Viewer"), when: new Date().toISOString(), action }, ...audit].slice(0, 200);
+    setAudit(next); ls.set("vmbs_audit", next); };
+
+  /* effective measure list: live||demo + admin overrides + staff entries */
+  const measures = useMemo(() => {
+    const base = (ext ? ext.measures : DATA).map(it => ({ ...it,
+      d: it.d || DESC[it.id] || "",
+      cat: (/policies/i.test(it.name) && /approved/i.test(it.name)) ? "POL" : it.cat,
+      m: [...it.m, ...Array(Math.max(0, 12 - it.m.length)).fill(null)].slice(0, 12) }));
+    ovr.added.forEach(a => base.push({ ...a, m: Array(12).fill(null) }));
+    return base
+      .filter(it => !ovr.retired.includes(it.name))
+      .map(it => {
+        const out = { ...it };
+        if (ovr.renames[it.name]) out.name = ovr.renames[it.name];
+        if (ovr.owners[it.name]) out.owner = ovr.owners[it.name];
+        if (ovr.targets[it.name] != null) out.target = ovr.targets[it.name];
+        out.m = out.m.map((v, mi) => {
+          const e = entries[mi] && entries[mi][it.name];
+          return e !== undefined ? e : v;
+        });
+        return out;
+      });
+  }, [ext, ovr, entries]);
+
+  const owners = useMemo(() => [...new Set(measures.map(it => it.owner))].sort(), [measures]);
+  const monthHasData = mi => measures.some(it => typeof it.m[mi] === "number");
+  const cycle = useMemo(() => { let c = 0; for (let mi = 0; mi < 12; mi++) if (monthHasData(mi)) c = mi; return c; }, [measures]);
+  const monthlyAvg = mi => { const v = measures.map(it => it.m[mi]).filter(x => typeof x === "number");
+    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  const ytdAll = useMemo(() => { const v = Array.from({ length: 12 }, (_, i) => monthlyAvg(i)).filter(x => x != null);
+    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; }, [measures]);
+  const targetAvg = measures.reduce((a, it) => a + it.target, 0) / Math.max(measures.length, 1);
+  const counts = useMemo(() => { const c = { on: 0, margin: 0, off: 0, way: 0 };
+    measures.forEach(it => { const s = stat(it.m[cycle], it.target); if (s) c[s]++; }); return c; }, [measures, cycle]);
+  const hist = ext ? (ext.hist ? ext.hist.groups : null) : HIST;
+  const avg29 = ext ? (ext.hist ? ext.hist.avg : null) : HAVG;
+  const histLinked = !ext; /* built-in HIST rows link to built-in measures for 2026 extension */
+
+  useEffect(() => { /* entry draft */
+    const d = {};
+    measures.forEach(it => { const v = it.m[entryMonth];
+      d[it.name] = v === "NA" ? "NA" : typeof v === "number" ? String(+(v * 100).toFixed(2)) : ""; });
+    setDraft(d); setSaveMsg("");
+  }, [entryMonth, measures.length, entries]);
+
+  useEffect(() => { setRepM(cycle); setRepTo(cycle); setEntryMonth(Math.min(cycle + 1, 11)); }, [ext]);
+
+  const connect = async () => {
+    try { const r = await graphLoad(setLiveMsg);
+      setExt({ type: "graph", measures: r.measures, hist: r.hist, label: "SharePoint", loadedAt: new Date().toISOString() });
+      setLiveMsg(""); log("Connected to SharePoint workbook"); }
+    catch (e) { setLiveMsg(e.message === "not-configured"
+      ? "SharePoint is not configured yet — GICT needs to complete the setup guide first. Running on built-in May 2026 data."
+      : "Could not reach the workbook (" + e.message + "). Running on built-in data."); }
+  };
+
+  const loadFile = async (file) => {
+    try {
+      if (!window.XLSX) throw new Error("the Excel reader library has not loaded — check internet access");
+      setLiveMsg("Reading " + file.name + "…");
+      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const findName = n => wb.SheetNames.find(s => s.trim().toLowerCase() === n.toLowerCase()) ||
+        wb.SheetNames.find(s => s.toLowerCase().includes(n.split(" ")[0].toLowerCase()));
+      const sheet = n => { const k = findName(n);
+        return k ? XLSX.utils.sheet_to_json(wb.Sheets[k], { header: 1, raw: true, defval: null }) : null; };
+      const keyName = findName(CONFIG.keySheet) || "";
+      const key = sheet(CONFIG.keySheet);
+      if (!key) throw new Error("sheet '" + CONFIG.keySheet + "' was not found in " + file.name);
+      const hrows = sheet(CONFIG.histSheet);
+      const obj = { type: "file", measures: parseKeySheet(key), hist: hrows ? parseHistSheet(hrows) : null,
+        year: Number((keyName.match(/20\d\d/) || [DATA_YEAR])[0]),
+        label: file.name, loadedAt: new Date().toISOString() };
+      setExt(obj); ls.set("vmbs_workbook", obj); setLiveMsg("");
+      log("Loaded workbook: " + file.name);
+    } catch (e) { setLiveMsg("Could not read the workbook — " + e.message); }
+  };
+  const revertSource = () => { setExt(null); try { localStorage.removeItem("vmbs_workbook"); } catch (e) {}
+    setLiveMsg(""); log("Reverted to built-in dataset"); };
+
+  const saveEntries = () => {
+    if (!enteredBy.trim()) { setSaveMsg("Add your name under 'Entered by' first, so the log records who submitted."); return; }
+    const monthObj = {}; let bad = 0;
+    measures.forEach(it => { const raw = draft[it.name];
+      if (raw === "NA") monthObj[it.name] = "NA";
+      else if (raw !== "" && raw != null) { const n = parseFloat(raw);
+        if (isNaN(n) || n < 0 || n > 100) { bad++; return; } monthObj[it.name] = +(n / 100).toFixed(4); } });
+    const next = { ...entries, [entryMonth]: { ...(entries[entryMonth] || {}), ...monthObj } };
+    setEntries(next); ls.set("vmbs_entries_" + yr, next);
+    log("Entered " + MONTHS[entryMonth] + " " + yr + " actuals (" + Object.keys(monthObj).length + " measures)");
+    setSaveMsg((bad ? bad + " value(s) skipped (use 0–100 or N/A). " : "") + "Saved on this device. " + MONTHS[entryMonth] + " " + yr + " figures now show across the app. The Excel workbook remains the official record.");
+  };
+
+  const goMeasures = (st, cat) => { setStatusFilter(st || null); setCatFilter(cat || null); setOpen(null); setTab("measures"); };
+
+  /* ---------- screens ---------- */
+  const filtered = measures.filter(it => (!statusFilter || stat(it.m[cycle], it.target) === statusFilter) && (!catFilter || it.cat === catFilter));
+  const entryList = measures.filter(it => (!entryOwner || it.owner === entryOwner) && (!entryCat || it.cat === entryCat));
+
+  const Pulse = (
+    <div>
+      <div className="hero">
+        <div className="row between base"><span className="eyebrow">YTD ATTAINMENT</span><span className="dim12">Jan – {MONTHS[cycle]} {yr} (latest data)</span></div>
+        <div className="big">{pct(ytdAll)}</div>
+        <div className="dim13">against an average target of {pct(targetAvg)}</div>
+        <div style={{ marginTop: 16 }}>
+          <div className="row" style={{ gap: 2.5 }}>
+            {measures.map(it => { const s = stat(it.m[cycle], it.target);
+              return <div key={it.name} onClick={() => s && goMeasures(s)} title={it.name} style={{
+                flex: 1, borderRadius: 2, cursor: "pointer", alignSelf: "flex-end",
+                height: !s ? 8 : s === "on" ? 14 : s === "margin" ? 20 : s === "off" ? 26 : 32,
+                background: !s ? "rgba(255,255,255,.35)" : s === "on" ? "rgba(255,255,255,.95)" : s === "margin" ? "#FFD66B" : s === "off" ? "#FF9A3D" : "#3B0510" }} />; })}
+          </div>
+          <div className="dim11" style={{ marginTop: 8 }}>One bar per published measure — the taller, the further from target. Tap to drill in.</div>
+        </div>
+      </div>
+      <div className="grid-status">
+        {Object.keys(STATUS).map(k => (
+          <button key={k} className="card btncard" onClick={() => goMeasures(k)}>
+            <div className="num" style={{ color: STATUS[k].color }}>{counts[k]}</div>
+            <div className="sub">{STATUS[k].label}</div>
+          </button>))}
+      </div>
+      <div className="h2l">By category — {MONTHS[cycle]} (latest month)</div>
+      <div className="grid-cats">
+        {CATLIST.map(c => { const items = measures.filter(it => it.cat === c); if (!items.length) return null;
+          const vals = items.map(it => it.m[cycle]).filter(v => typeof v === "number");
+          const avg = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+          const flags = items.filter(it => ["off", "way"].includes(stat(it.m[cycle], it.target))).length;
+          return (
+            <button key={c} className="card btncard row mid" onClick={() => goMeasures(null, c)}>
+              <div style={{ flex: 1, textAlign: "left" }}>
+                <div className="t14">{CATNAME[c]}</div>
+                <div className="sub" style={{ marginTop: 2 }}>{items.length} measures{flags ? " · " + flags + " flagged" : " · all healthy"}</div>
+              </div>
+              <div className="num18" style={{ color: flags ? "#C75F00" : "#0E8A4D" }}>{pct(avg)}</div>
+            </button>); })}
+      </div>
+      <div className="h2l">Needs attention — {MONTHS[cycle]} (latest month)</div>
+      <div className="col gap10 pb8">
+        {measures.filter(it => stat(it.m[cycle], it.target) === "way").map(it => (
+          <button key={it.name} className="card btncard row mid" style={{ borderLeft: "4px solid #8E0E1F" }}
+            onClick={() => { setStatusFilter(null); setCatFilter(null); setOpen(it.name); setTab("measures"); }}>
+            <div style={{ flex: 1, textAlign: "left" }}>
+              <div className="t13">{it.name}</div><div className="sub" style={{ marginTop: 3 }}>{it.owner}</div>
+            </div>
+            <div className="num17" style={{ color: "#8E0E1F" }}>{pct(it.m[cycle])}</div>
+          </button>))}
+        {!measures.some(it => stat(it.m[cycle], it.target) === "way") && <div className="card sub">Nothing critical this month.</div>}
+      </div>
+    </div>
+  );
+
+  const Measures = (
+    <div>
+      <div className="chips">
+        <Chip active={!catFilter && !statusFilter} onClick={() => { setCatFilter(null); setStatusFilter(null); }}>All {measures.length}</Chip>
+        {CATLIST.map(c => measures.some(it => it.cat === c) &&
+          <Chip key={c} active={catFilter === c} onClick={() => setCatFilter(catFilter === c ? null : c)}>{CATNAME[c].split(" ")[0]}</Chip>)}
+        {Object.keys(STATUS).map(k =>
+          <Chip key={k} active={statusFilter === k} color={STATUS[k].color} onClick={() => setStatusFilter(statusFilter === k ? null : k)}>{STATUS[k].label}</Chip>)}
+      </div>
+      <div className="sub" style={{ margin: "2px 4px 10px" }}>{filtered.length} of {measures.length} measures · latest month: {MONTHS[cycle]} {yr}</div>
+      <div className="grid-measures">
+        {filtered.map(it => { const expanded = open === it.name;
+          const s = stat(it.m[cycle], it.target); const col = s ? STATUS[s].color : "#A89C97";
+          const ytdV = it.m.filter(v => typeof v === "number");
+          return (
+            <div key={it.name} className="card" style={{ padding: 0, overflow: "hidden", alignSelf: "start" }}>
+              <button className="rowbtn" onClick={() => setOpen(expanded ? null : it.name)}>
+                <div className="dot" style={{ background: col }} />
+                <div style={{ flex: 1 }}>
+                  <div className="t13">{it.name}</div>
+                  <div className="sub" style={{ marginTop: 2 }}>{it.owner} · {CATNAME[it.cat]}</div>
+                </div>
+                <div className="num16" style={{ color: col }}>{pct(it.m[cycle])}</div>
+              </button>
+              {expanded && (
+                <div style={{ padding: "0 14px 14px", borderTop: "1px solid #F1ECE9" }}>
+                  <div className="row between mid" style={{ margin: "12px 0 4px" }}>
+                    <Pill s={s} />
+                    <span className="sub">Target {pct(it.target, 2)} · YTD {pct(ytdV.length ? ytdV.reduce((a, b) => a + b, 0) / ytdV.length : null)}</span>
+                  </div>
+                  <Spark m={it.m} target={it.target} color={col} />
+                  <div className="mgrid">
+                    {MONTHS.map((mo, i) => (
+                      <div key={mo} style={{ textAlign: "center" }}>
+                        <div className="mlab">{mo}</div>
+                        <div className="mval" style={{ color: it.m[i] == null ? "#C9C2BE" : "#1C1416" }}>
+                          {it.m[i] === "NA" ? "N/A" : it.m[i] == null ? "—" : pct(it.m[i], 0)}</div>
+                      </div>))}
+                  </div>
+                  {it.note && <div className="notebox"><strong>Commentary · </strong>{it.note}</div>}
+                </div>)}
+            </div>); })}
+      </div>
+    </div>
+  );
+
+  const extRow = (link, v0) => {
+    const out = v0.slice(0, 36);
+    while (out.length < 36) {
+      const mi = out.length - 24; let m = null;
+      if (histLinked && link) { const it = measures.find(x => x.id === link);
+        if (it && typeof it.m[mi] === "number") m = it.m[mi]; }
+      out.push(m);
+    }
+    return out;
+  };
+  const extAvg = () => { if (!avg29) return [];
+    const out = avg29.slice(0, 36);
+    while (out.length < 36) { const mi = out.length - 24; out.push(monthHasData(mi) ? monthlyAvg(mi) : null); }
+    return out; };
+
+  const History = (
+    <div>
+      {(() => { const a = extAvg(); let last = -1; a.forEach((v, i) => { if (v != null) last = i; });
+        if (last < 0) return null;
+        const series = a.slice(0, last + 1), n = series.length;
+        return (
+          <div className="card">
+            <div className="t14">Division average — Jan {hmStart} to {MONTHS[last % 12]} {hmStart + Math.floor(last / 12)}</div>
+            <div className="sub" style={{ marginBottom: 4 }}>{n} months plotted · one point per month with data · dashed line = 99.99% benchmark</div>
+            <Spark m={series} target={.9999} color="#E4012B" h={88} />
+            <div style={{ position: "relative", height: 14 }} className="mlab">
+              {[0, 12, 24].filter(i => i <= last).map(i => (
+                <span key={i} style={{ position: "absolute", left: (i / Math.max(n - 1, 1)) * 100 + "%",
+                  transform: i === 0 ? "none" : "translateX(-50%)" }}>{hmStart + i / 12}</span>))}
+            </div>
+          </div>); })()}
+      <div className="h2l">Performance Against Industry Standards</div>
+      <div className="card" style={{ padding: "12px 14px", marginBottom: 10 }}>
+        <div className="t14" style={{ marginBottom: 6 }}>Performance benchmark</div>
+        <div className="legend" style={{ margin: 0 }}>
+          {[["#0E8A4D", "World Class", "≥ 95%"], ["#E3B341", "Industry Average", "90–95%"],
+            ["#E07B00", "Non-Competitive", "80–90%"], ["#B5142A", "Unacceptable", "< 80%"],
+            ["#EFE9E6", "Not tracked", ""]].map(([c, l, r]) =>
+            <span key={l}><span className="sw" style={{ background: c }} /><strong>{l}</strong>{r ? "\u00A0" + r : ""}</span>)}
+        </div>
+        <div className="sub" style={{ marginTop: 8 }}>
+          Industry performance benchmarks — deliberately separate from the VMBS business targets and status rules used on the Report tab and in the published monitor.
+        </div>
+      </div>
+      {cell && (
+        <div className="card row between mid" style={{ padding: "10px 14px", marginBottom: 10 }}>
+          <div><div className="t13">{cell.name}</div><div className="sub">{cell.label} · {bandLabel(cell.v)}</div></div>
+          <div className="num17" style={{ color: band(cell.v) === "#EFE9E6" ? "#A89C97" : band(cell.v) }}>{pct(cell.v)}</div>
+        </div>)}
+      <div className="card" style={{ padding: "12px 0 12px 12px" }}>
+        <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
+          <div className="hm">
+            <div className="row">
+              <div className="hmname" />
+              {[hmStart, hmStart + 1, hmStart + 2].map(y => <div key={y} className="hmyear">{y}</div>)}
+            </div>
+            <div className="row" style={{ marginBottom: 4 }}>
+              <div className="hmname" />
+              {Array.from({ length: 36 }, (_, i) => <div key={i} className="hmmon">{MONTHS[i % 12][0]}</div>)}
+            </div>
+            {extAvg().length > 0 && (
+              <div className="row mid" style={{ marginBottom: 6 }}>
+                <div className="hmname b">Division average</div>
+                {extAvg().map((v, i) => <div key={i} className="hmcell" style={{ background: band(v) }}
+                  onClick={() => setCell({ name: "Division average", label: MONTHS[i % 12] + " " + (hmStart + Math.floor(i / 12)), v })} />)}
+              </div>)}
+            {(hist || []).map(grp => (
+              <div key={grp.g}>
+                <div className="hmgroup">{grp.g}</div>
+                {grp.rows.map(([name, link, v29]) => (
+                  <div key={name} className="row mid">
+                    <div className="hmname">{name}</div>
+                    {extRow(link, v29).map((v, i) => <div key={i} className="hmcell" style={{ background: band(v) }}
+                      onClick={() => setCell({ name, label: MONTHS[i % 12] + " " + (hmStart + Math.floor(i / 12)), v })} />)}
+                  </div>))}
+              </div>))}
+          </div>
+        </div>
+        <div className="sub" style={{ marginTop: 10, paddingRight: 12 }}>
+          Scroll sideways for the full {hmStart}–{yr} range; tap any square for the exact figure and its benchmark band. Retired {hmStart} measures are budget ratios, so bands there are indicative only.
+        </div>
+      </div>
+    </div>
+  );
+
+  const Report = (
+    <div>
+      <div className="card">
+        <div className="t15">Ops SLA Monitor report</div>
+        <div className="sub13" style={{ marginTop: 4 }}>Download the published monitor as a PDF (ready to circulate) or CSV (for Excel) — a single month, a selected period, or the full year to date.</div>
+      </div>
+      <div className="h2l">What to download</div>
+      <div className="chips">
+        <Chip active={repMode === "month"} onClick={() => setRepMode("month")}>Single month</Chip>
+        <Chip active={repMode === "range"} onClick={() => setRepMode("range")}>Selected period</Chip>
+        <Chip active={repMode === "all"} onClick={() => setRepMode("all")}>Full dataset</Chip>
+      </div>
+      {repMode === "month" && (
+        <div className="chips" style={{ marginTop: 10 }}>
+          {MONTHS.map((mo, i) => <Chip key={mo} active={repM === i} disabled={!monthHasData(i)} onClick={() => monthHasData(i) && setRepM(i)}>{mo}</Chip>)}
+        </div>)}
+      {repMode === "range" && (
+        <div className="row gap10 mid" style={{ marginTop: 10 }}>
+          <label className="sub">From</label>
+          <select className="sel" value={repFrom} onChange={e => setRepFrom(+e.target.value)}>
+            {MONTHS.map((mo, i) => monthHasData(i) && <option key={mo} value={i}>{mo}</option>)}</select>
+          <label className="sub">To</label>
+          <select className="sel" value={repTo} onChange={e => setRepTo(+e.target.value)}>
+            {MONTHS.map((mo, i) => monthHasData(i) && i >= repFrom && <option key={mo} value={i}>{mo}</option>)}</select>
+        </div>)}
+      {(() => {
+        const from = repMode === "month" ? repM : repMode === "range" ? repFrom : 0;
+        const to = repMode === "month" ? repM : repMode === "range" ? Math.max(repFrom, repTo) : cycle;
+        const label = repMode === "month" ? MONTHS[repM] : MONTHS[from] + "–" + MONTHS[to];
+        const c = { on: 0, margin: 0, off: 0, way: 0 };
+        measures.forEach(it => { const s = stat(it.m[to], it.target); if (s) c[s]++; });
+        return (
+          <div className="card" style={{ marginTop: 12 }}>
+            <div className="row between base"><div className="t14">{label} {yr}</div>
+              <div className="num18" style={{ color: "#E4012B" }}>{pct(monthlyAvg(to))}</div></div>
+            <div className="row gap8 wrap" style={{ margin: "10px 0 14px" }}>
+              {Object.keys(STATUS).map(k => <span key={k} className="pill" style={{ background: STATUS[k].bg, color: STATUS[k].color }}>{c[k]} {STATUS[k].label}</span>)}
+            </div>
+            <button className="cta" onClick={() => safePDF(() => repMode === "month" ? downloadMonthPDF(measures, repM, monthlyAvg(repM), yr) : downloadRangePDF(measures, from, to, monthlyAvg, yr))}>
+              Download PDF ({label} {yr})</button>
+            <button className="cta2" onClick={() => safeCSV(() => downloadCSVData(measures, from, to, label.replace("–", "-"), yr))}>Download CSV (for Excel)</button>
+            <div className="sub" style={{ marginTop: 10 }}>PDF is formatted for circulation and printing; CSV opens straight into Excel for pivoting.</div>
+          </div>);
+      })()}
+      <div className="h2l">Status definitions</div>
+      <div className="col gap8 pb8">
+        {[["on", "At or above target."], ["margin", "Within 3% below target — acceptable, watch closely."],
+          ["off", "3–10% below target. Written commentary required."],
+          ["way", "More than 10% below target. Immediate COO notification; action plan within 5 business days."]].map(([k, d]) => (
+            <div key={k} className="card row gap10" style={{ padding: 13, alignItems: "flex-start" }}>
+              <Pill s={k} small /><div className="sub13" style={{ flex: 1 }}>{d}</div></div>))}
+      </div>
+    </div>
+  );
+
+  const Entry = (
+    <div>
+      <div className="card">
+        <div className="t15">Enter {yr} actuals</div>
+        <div className="sub13" style={{ marginTop: 4 }}>
+          Enter each actual as a percentage (e.g. 96.4) or mark N/A. The Excel workbook on SharePoint remains the official entry point and source of truth — figures saved here update this app's views on this device, pending the write-back phase.
+        </div>
+      </div>
+      <div className="h2l">Month</div>
+      <div className="chips">{MONTHS.map((mo, i) => <Chip key={mo} active={entryMonth === i} onClick={() => setEntryMonth(i)}>{mo}</Chip>)}</div>
+      <div className="sub" style={{ margin: "8px 4px 0" }}>
+        {MONTHS[entryMonth]} {yr} actuals are due by <strong style={{ color: "#E4012B" }}>{yr === 2026 ? DEADLINES[entryMonth] : "the second Monday of the following month"}</strong>.
+      </div>
+      <div className="h2l">Filter</div>
+      <div className="chips">
+        <Chip active={!entryOwner && !entryCat} onClick={() => { setEntryOwner(null); setEntryCat(null); }}>All</Chip>
+        {owners.map(o => <Chip key={o} active={entryOwner === o} onClick={() => setEntryOwner(entryOwner === o ? null : o)}>{o}</Chip>)}
+      </div>
+      <div className="chips" style={{ marginTop: 6 }}>
+        {CATLIST.map(c => measures.some(it => it.cat === c) &&
+          <Chip key={c} active={entryCat === c} onClick={() => setEntryCat(entryCat === c ? null : c)}>{CATNAME[c]}</Chip>)}
+      </div>
+      <div className="sub" style={{ margin: "8px 4px 0" }}>{entryList.length} measure{entryList.length === 1 ? "" : "s"} shown</div>
+      {CATLIST.map(c => { const items = entryList.filter(it => it.cat === c); if (!items.length) return null;
+        return (
+          <div key={c}>
+            <div className="h2l">{CATNAME[c]}</div>
+            <div className="card" style={{ padding: "4px 14px" }}>
+              {items.map((it, idx) => (
+                <div key={it.name} className="row mid gap8" style={{ padding: "10px 0", borderBottom: idx < items.length - 1 ? "1px solid #F1ECE9" : "none" }}>
+                  <div style={{ flex: 1, fontSize: 12.5, lineHeight: 1.3 }}>{it.name}
+                    <span className="sub" style={{ display: "block", fontSize: 10.5 }}>{it.owner} · target {pct(it.target, 2)}</span></div>
+                  {draft[it.name] === "NA" ? <span className="sub b">N/A</span> : (
+                    <div className="row mid" style={{ gap: 3 }}>
+                      <input className="numin" type="number" inputMode="decimal" min="0" max="100" step="0.01"
+                        value={draft[it.name] ?? ""} placeholder="—"
+                        onChange={e => setDraft({ ...draft, [it.name]: e.target.value })} />
+                      <span className="sub">%</span>
+                    </div>)}
+                  <button className="nabtn" data-on={draft[it.name] === "NA"}
+                    onClick={() => setDraft({ ...draft, [it.name]: draft[it.name] === "NA" ? "" : "NA" })}>N/A</button>
+                </div>))}
+            </div>
+          </div>); })}
+      <div className="card row mid gap8" style={{ marginTop: 16 }}>
+        <div className="sub13" style={{ flex: 1 }}>Entered by</div>
+        <input className="login-in" style={{ marginBottom: 0, maxWidth: 220 }} placeholder="Your name" value={enteredBy}
+          onChange={e => { setEnteredBy(e.target.value); try { localStorage.setItem("vmbs_entered_by", e.target.value); } catch (err) {} }} />
+      </div>
+      <div style={{ position: "sticky", bottom: 86, marginTop: 12, paddingBottom: 8 }}>
+        <button className="cta shadow" onClick={saveEntries}>Save {MONTHS[entryMonth]} {yr} actuals</button>
+        {saveMsg && <div className="okmsg">{saveMsg}</div>}
+      </div>
+    </div>
+  );
+
+  const Settings = !admin ? null : (
+    <SettingsScreen adminPw={adminPw} setAdminPw={p => { setAdminPw(p); ls.set("vmbs_admin_pw", p); log("Changed admin password"); }}
+      measures={measures} ovr={ovr} setOvr={o => { setOvr(o); ls.set("vmbs_admin_ovr", o); }} log={log} audit={audit}
+      connect={connect} loadFile={loadFile} revertSource={revertSource} ext={ext} liveMsg={liveMsg} />
+  );
+
+  const tabs = [
+    ["pulse", "Pulse", "M3 12h4l3-8 4 16 3-8h4"],
+    ["measures", "Measures", "M4 6h16M4 12h16M4 18h10"],
+    ["history", "History", "M4 4v16h16M8 14v3M12 9v8M16 12v5M20 7v10"],
+    ["report", "Report", "M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"],
+    ["entry", "Entry", "M16 3l5 5L8 21H3v-5L16 3z"],
+    ...(admin ? [["settings", "Settings", "M12 8a4 4 0 100 8 4 4 0 000-8zM19 12a7 7 0 01-.1 1.2l2 1.6-2 3.4-2.4-1a7 7 0 01-2 1.2L14 21h-4l-.5-2.6a7 7 0 01-2-1.2l-2.4 1-2-3.4 2-1.6A7 7 0 015 12a7 7 0 01.1-1.2l-2-1.6 2-3.4 2.4 1a7 7 0 012-1.2L10 3h4l.5 2.6a7 7 0 012 1.2l2.4-1 2 3.4-2 1.6c.07.4.1.8.1 1.2z"]] : []),
+  ];
+
+  return (
+    <div className="shell">
+      <div className="app">
+        <div className="appbar">
+          <VMLogo h={26} />
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="brand">VM Building Society</div>
+            <div className="sub" style={{ fontWeight: 500 }}>Operations SLA Monitor · Latest data: {MONTHS[cycle]} {yr}</div>
+          </div>
+          <span className={"srcbadge" + (ext ? " live" : "")}>{!ext ? "Built-in data" : ext.type === "graph" ? "Live · SharePoint" :
+            "Workbook · " + new Date(ext.loadedAt).toLocaleDateString("en-JM", { day: "numeric", month: "short" })}</span>
+          {admin ? (
+            <button className="userchip" title="Sign out of admin"
+              onClick={() => { try { sessionStorage.removeItem("vmbs_admin"); } catch (e) {} setAdmin(false); if (tab === "settings") setTab("pulse"); }}>A</button>
+          ) : (
+            <button className="loginpill" onClick={() => { setPwOpen(true); setPwTry(""); setPwErr(""); }}>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="4" y="11" width="16" height="9" rx="2" /><path d="M8 11V7a4 4 0 018 0v4" /></svg>
+              Login
+            </button>
+          )}
+        </div>
+        {liveMsg && <div className="banner">{liveMsg}</div>}
+        <div className="content">
+          {tab === "pulse" && Pulse}
+          {tab === "measures" && Measures}
+          {tab === "history" && History}
+          {tab === "report" && Report}
+          {tab === "entry" && Entry}
+          {tab === "settings" && Settings}
+        </div>
+        {pwOpen && (
+          <div className="overlay" onClick={() => setPwOpen(false)}>
+            <div className="modal" onClick={e => e.stopPropagation()} onKeyDown={e => { if (e.key === "Escape") setPwOpen(false); }}>
+              <button className="modalx" aria-label="Close" onClick={() => setPwOpen(false)}>✕</button>
+              <div className="t15" style={{ marginBottom: 4, paddingRight: 28 }}>Admin sign-in</div>
+              <div className="sub13" style={{ marginBottom: 12 }}>Only needed for Settings — staff can use everything else without signing in.</div>
+              <input className="login-in" type="password" placeholder="Admin password" value={pwTry} autoFocus
+                onChange={e => setPwTry(e.target.value)}
+                onKeyDown={e => { if (e.key === "Enter") { if (pwTry === adminPw) { try { sessionStorage.setItem("vmbs_admin", "1"); } catch (err) {} setAdmin(true); setPwOpen(false); log("Admin signed in"); } else setPwErr("Incorrect password."); } }} />
+              {pwErr && <div className="errmsg">{pwErr}</div>}
+              <button className="cta" onClick={() => { if (pwTry === adminPw) { try { sessionStorage.setItem("vmbs_admin", "1"); } catch (e) {} setAdmin(true); setPwOpen(false); log("Admin signed in"); } else setPwErr("Incorrect password."); }}>Unlock Settings</button>
+              <button className="cta2" onClick={() => setPwOpen(false)}>Cancel</button>
+            </div>
+          </div>
+        )}
+        <div className="tabbar">
+          {tabs.map(([id, label, icon]) => (
+            <button key={id} className={"tabbtn" + (tab === id ? " on" : "")} onClick={() => { setTab(id); window.scrollTo(0, 0); }}>
+              <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={icon} /></svg>
+              <span>{label}</span>
+            </button>))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SettingsScreen({ adminPw, setAdminPw, measures, ovr, setOvr, log, audit, connect, loadFile, revertSource, ext, liveMsg }) {
+  const [cur, setCur] = useState(""); const [n1, setN1] = useState(""); const [n2, setN2] = useState(""); const [pwMsg, setPwMsg] = useState("");
+  const fileRef = React.useRef(null);
+  const [nm, setNm] = useState({ name: "", owner: "", cat: "BSS", target: "99.99" });
+  const owners = [...new Set(measures.map(it => it.owner))].sort();
+  const changePw = () => {
+    if (cur !== adminPw) return setPwMsg("Current password is incorrect.");
+    if (n1.length < 6) return setPwMsg("New password must be at least 6 characters.");
+    if (n1 !== n2) return setPwMsg("New passwords do not match.");
+    setAdminPw(n1); setCur(""); setN1(""); setN2(""); setPwMsg("Password changed on this device.");
+  };
+  const renameOwner = (oldName) => {
+    const nn = window.prompt("New officer name to replace '" + oldName + "':", oldName);
+    if (!nn || nn.trim() === oldName) return;
+    const owners2 = { ...ovr.owners };
+    measures.filter(it => it.owner === oldName).forEach(it => { owners2[it.name] = nn.trim(); });
+    setOvr({ ...ovr, owners: owners2 }); log("Reassigned measures from " + oldName + " to " + nn.trim());
+  };
+  const editMeasure = (it) => {
+    const nn = window.prompt("Measure name:", it.name); if (nn == null) return;
+    const no = window.prompt("Officer / manager:", it.owner); if (no == null) return;
+    const nt = window.prompt("Target % (e.g. 99.99):", (it.target * 100).toFixed(2)); if (nt == null) return;
+    const next = { ...ovr, renames: { ...ovr.renames }, owners: { ...ovr.owners }, targets: { ...ovr.targets } };
+    if (nn.trim() && nn.trim() !== it.name) next.renames[it.name] = nn.trim();
+    if (no.trim() && no.trim() !== it.owner) next.owners[it.name] = no.trim();
+    const t = parseFloat(nt); if (!isNaN(t) && t > 0 && t <= 100) next.targets[it.name] = +(t / 100).toFixed(4);
+    setOvr(next); log("Edited measure: " + it.name);
+  };
+  const retire = (it) => {
+    if (!window.confirm("Retire '" + it.name + "'? It drops out of all views and reports but stays in workbook history.")) return;
+    setOvr({ ...ovr, retired: [...ovr.retired, it.name] }); log("Retired measure: " + it.name);
+  };
+  const restore = (name) => { setOvr({ ...ovr, retired: ovr.retired.filter(r => r !== name) }); log("Restored measure: " + name); };
+  const addMeasure = () => {
+    if (!nm.name.trim() || !nm.owner.trim()) return;
+    const t = parseFloat(nm.target);
+    setOvr({ ...ovr, added: [...ovr.added, { id: "add-" + Date.now(), name: nm.name.trim(), owner: nm.owner.trim(),
+      cat: nm.cat, target: isNaN(t) ? .9999 : +(t / 100).toFixed(4) }] });
+    log("Added measure: " + nm.name.trim());
+    setNm({ name: "", owner: "", cat: "BSS", target: "99.99" });
+  };
+  return (
+    <div>
+      <div className="card">
+        <div className="t15">Data source</div>
+        <div className="sub13" style={{ margin: "4px 0 10px" }}>
+          {!ext ? "Running on the built-in dataset (May 2026). Load your Excel workbook straight from this device — no IT needed. SharePoint connection becomes available once GICT completes the setup guide."
+            : ext.type === "graph" ? "Connected — reading the live workbook on SharePoint."
+            : "Using \"" + ext.label + "\", loaded " + new Date(ext.loadedAt).toLocaleString("en-JM") + ". When the Excel file is updated each month, load it again here to refresh — one tap."}
+        </div>
+        <input ref={fileRef} type="file" accept=".xlsx,.xlsm" style={{ display: "none" }}
+          onChange={e => { const f = e.target.files && e.target.files[0]; if (f) loadFile(f); e.target.value = ""; }} />
+        <button className="cta" onClick={() => fileRef.current && fileRef.current.click()}>Load Excel workbook (from this device)</button>
+        <button className="cta2" onClick={connect}>Connect to SharePoint (after GICT setup)</button>
+        {ext && <button className="cta2" onClick={revertSource}>Reset to built-in dataset</button>}
+        {liveMsg && <div className="sub b" style={{ marginTop: 8 }}>{liveMsg}</div>}
+        <div className="sub" style={{ marginTop: 8 }}>The loaded workbook is remembered on this device until replaced. Each device loads the file once; the SharePoint connection (Phase 2) removes that step for everyone.</div>
+      </div>
+
+      <div className="h2l">Officers</div>
+      <div className="card" style={{ padding: "4px 14px" }}>
+        {owners.map((o, i) => (
+          <div key={o} className="row mid between" style={{ padding: "10px 0", borderBottom: i < owners.length - 1 ? "1px solid #F1ECE9" : "none" }}>
+            <div style={{ fontSize: 13 }}>{o}<span className="sub" style={{ display: "block", fontSize: 10.5 }}>
+              {measures.filter(it => it.owner === o).length} measures</span></div>
+            <button className="minibtn" onClick={() => renameOwner(o)}>Replace officer</button>
+          </div>))}
+      </div>
+
+      <div className="h2l">Measures</div>
+      <div className="card" style={{ padding: "4px 14px" }}>
+        {measures.map((it, i) => (
+          <div key={it.name} className="row mid gap8" style={{ padding: "9px 0", borderBottom: i < measures.length - 1 ? "1px solid #F1ECE9" : "none" }}>
+            <div style={{ flex: 1, fontSize: 12.5, lineHeight: 1.3 }}>{it.name}
+              <span className="sub" style={{ display: "block", fontSize: 10.5 }}>{it.owner} · {CATNAME[it.cat]} · target {pct(it.target, 2)}</span></div>
+            <button className="minibtn" onClick={() => editMeasure(it)}>Edit</button>
+            <button className="minibtn warn" onClick={() => retire(it)}>Retire</button>
+          </div>))}
+      </div>
+      {ovr.retired.length > 0 && (<>
+        <div className="h2l">Retired measures</div>
+        <div className="card" style={{ padding: "4px 14px" }}>
+          {ovr.retired.map((name, i) => (
+            <div key={name} className="row mid between" style={{ padding: "9px 0", borderBottom: i < ovr.retired.length - 1 ? "1px solid #F1ECE9" : "none" }}>
+              <div style={{ fontSize: 12.5, color: "#8A7E7A" }}>{name}</div>
+              <button className="minibtn" onClick={() => restore(name)}>Restore</button>
+            </div>))}
+        </div></>)}
+
+      <div className="h2l">Add a measure</div>
+      <div className="card col gap8">
+        <input className="login-in" placeholder="Measure name" value={nm.name} onChange={e => setNm({ ...nm, name: e.target.value })} />
+        <input className="login-in" placeholder="Officer / manager" value={nm.owner} onChange={e => setNm({ ...nm, owner: e.target.value })} />
+        <div className="row gap8 mid">
+          <select className="sel" value={nm.cat} onChange={e => setNm({ ...nm, cat: e.target.value })}>
+            {CATLIST.map(c => <option key={c} value={c}>{CATNAME[c]}</option>)}</select>
+          <input className="login-in" style={{ width: 110, marginBottom: 0 }} placeholder="Target %" value={nm.target}
+            onChange={e => setNm({ ...nm, target: e.target.value })} />
+        </div>
+        <button className="cta2" onClick={addMeasure}>Add measure</button>
+        <div className="sub">New measures start with no actuals; staff enter them on the Entry tab. Add the same row to the Excel workbook so the official record matches.</div>
+      </div>
+
+      <div className="h2l">Admin password</div>
+      <div className="card col gap8">
+        <input className="login-in" type="password" placeholder="Current password" value={cur} onChange={e => setCur(e.target.value)} />
+        <input className="login-in" type="password" placeholder="New password" value={n1} onChange={e => setN1(e.target.value)} />
+        <input className="login-in" type="password" placeholder="Repeat new password" value={n2} onChange={e => setN2(e.target.value)} />
+        <button className="cta2" onClick={changePw}>Change password</button>
+        {pwMsg && <div className="sub b">{pwMsg}</div>}
+        <div className="sub">The password is held in this app on each device, not on a server — so a change applies to the device where it's made. Treat this as pilot-level access control; Microsoft 365 sign-in replaces it when GICT connects the app.</div>
+      </div>
+
+      <div className="h2l">Audit log</div>
+      <div className="card" style={{ padding: "4px 14px", maxHeight: 280, overflowY: "auto" }}>
+        {audit.length === 0 && <div className="sub" style={{ padding: "10px 0" }}>No activity recorded yet on this device.</div>}
+        {audit.map((a, i) => (
+          <div key={i} style={{ padding: "8px 0", borderBottom: i < audit.length - 1 ? "1px solid #F1ECE9" : "none" }}>
+            <div style={{ fontSize: 12 }}>{a.action}</div>
+            <div className="sub" style={{ fontSize: 10.5 }}>{a.who} · {new Date(a.when).toLocaleString("en-JM")}</div>
+          </div>))}
+      </div>
+      <div className="sub" style={{ margin: "10px 4px 20px" }}>
+        Settings changes and the audit log are stored on this device until the SharePoint write-back phase. Mirror any permanent changes (officers, targets, new or retired measures) in the Excel workbook, which remains the governance record.
+      </div>
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+</script>
+</body>
+</html>
