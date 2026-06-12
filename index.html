@@ -139,6 +139,9 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family:'IBM Ple
 .modal { position:relative; }
 .modalx { position:absolute; top:10px; right:12px; border:none; background:#F6F3F1; color:#6E625E; width:28px; height:28px;
   border-radius:99px; cursor:pointer; font-size:13px; font-weight:700; line-height:1; }
+.iconwrap { position:relative; display:inline-flex; }
+.tablock { position:absolute; top:-4px; right:-8px; background:#fff; border-radius:99px; padding:1px; }
+@media (min-width:768px) { .tablock { top:-5px; right:-9px; } }
 
 </style>
 </head>
@@ -286,29 +289,19 @@ const ls = {
   get(k, fb) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch (e) { return fb; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
 };
-const inSandbox = () => { try { return window.self !== window.top; } catch (e) { return true; } };
 function dl(content, name, type) {
   const b = content instanceof Blob ? content : new Blob([content], { type });
-  const url = URL.createObjectURL(b);
-  if (inSandbox()) {
-    // Chat-preview / embedded mode: direct downloads are blocked by the sandbox,
-    // so open the file in a new tab where the user can view and save it.
-    const w = window.open(url, "_blank");
-    if (!w) window.alert("Pop-up blocked — please allow pop-ups for this page, or open " +
-      "VMBS_SLA_Monitor.html directly in Safari, Chrome or Edge for one-click downloads.");
-  } else {
-    const a = document.createElement("a");
-    a.href = url; a.download = name; a.rel = "noopener";
-    document.body.appendChild(a); a.click(); a.remove();
-  }
-  setTimeout(() => URL.revokeObjectURL(url), 60000);
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(b); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
 const safePDF = fn => { try {
   if (!window.jspdf || !window.jspdf.jsPDF) throw new Error("the PDF library has not loaded — check internet access");
   fn();
-} catch (e) { window.alert("PDF generation failed — " + e.message + ".\n\nIf the PDF library hasn't loaded, check your internet connection and refresh. For one-click downloads, open VMBS_SLA_Monitor.html directly in Safari, Chrome or Edge."); } };
+} catch (e) { window.alert("PDF download failed — " + e.message + ".\n\nNote: downloads are blocked when this app is previewed inside the chat. Open the VMBS_SLA_Monitor.html file directly in Safari, Chrome or Edge and the buttons will work."); } };
 const safeCSV = fn => { try { fn(); }
-  catch (e) { window.alert("CSV generation failed — " + e.message + ".\n\nFor one-click downloads, open the app file directly in a browser."); } };
+  catch (e) { window.alert("CSV download failed — " + e.message + ".\n\nNote: downloads are blocked when this app is previewed inside the chat. Open the app file directly in a browser."); } };
 const CATLIST = ["TPE", "BSS", "SRP", "POL", "PEE", "OTH"];
 const CATNAME = { ...CATS, POL: "Policies", OTH: "Other" };
 const CATFULL = { TPE: "Transaction Processing Efficiency", BSS: "Business Support Services",
@@ -541,7 +534,7 @@ function downloadMonthPDF(measures, mi, avg, yr) {
     y += 5.5;
   });
   pdfFooter(doc);
-  dl(doc.output("blob"), "VMBS_Operations_Month_In_Review_SLA_" + MONTHS[mi] + "_" + yr + ".pdf", "application/pdf");
+  doc.save("VMBS_Operations_Month_In_Review_SLA_" + MONTHS[mi] + "_" + yr + ".pdf");
 }
 function downloadRangePDF(measures, from, to, avgFn, yr) {
   const doc = new jspdf.jsPDF({ orientation: "landscape" });
@@ -562,7 +555,7 @@ function downloadRangePDF(measures, from, to, avgFn, yr) {
   doc.setFontSize(8); doc.setFont(undefined, "bold");
   doc.text("Division average — " + span.map((mo, k) => mo + ": " + pct(avgFn(from + k))).join("   ·   "), 14, y, { maxWidth: 260 });
   pdfFooter(doc);
-  dl(doc.output("blob"), "VMBS_Ops_SLA_Monitor_" + MONTHS[from] + "-" + MONTHS[to] + "_" + yr + ".pdf", "application/pdf");
+  doc.save("VMBS_Ops_SLA_Monitor_" + MONTHS[from] + "-" + MONTHS[to] + "_" + yr + ".pdf");
 }
 function downloadCSVData(measures, from, to, label, yr) {
   const esc = s => '"' + String(s).replace(/"/g, '""') + '"';
@@ -580,6 +573,7 @@ function downloadCSVData(measures, from, to, label, yr) {
 function App() {
   const [admin, setAdmin] = useState(() => { try { return sessionStorage.getItem("vmbs_admin") === "1" } catch (e) { return false } });
   const [pwOpen, setPwOpen] = useState(false);
+  const [pwNext, setPwNext] = useState(null);
   const [pwTry, setPwTry] = useState("");
   const [pwErr, setPwErr] = useState("");
   const [enteredBy, setEnteredBy] = useState(() => { try { return localStorage.getItem("vmbs_entered_by") || "" } catch (e) { return "" } });
@@ -838,7 +832,7 @@ function App() {
                   transform: i === 0 ? "none" : "translateX(-50%)" }}>{hmStart + i / 12}</span>))}
             </div>
           </div>); })()}
-      <div className="h2l">Performance Against Industry Standards</div>
+      <div className="h2l">Performance heat map</div>
       <div className="card" style={{ padding: "12px 14px", marginBottom: 10 }}>
         <div className="t14" style={{ marginBottom: 6 }}>Performance benchmark</div>
         <div className="legend" style={{ margin: 0 }}>
@@ -1014,8 +1008,8 @@ function App() {
     ["measures", "Measures", "M4 6h16M4 12h16M4 18h10"],
     ["history", "History", "M4 4v16h16M8 14v3M12 9v8M16 12v5M20 7v10"],
     ["report", "Report", "M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"],
-    ["entry", "Entry", "M16 3l5 5L8 21H3v-5L16 3z"],
-    ...(admin ? [["settings", "Settings", "M12 8a4 4 0 100 8 4 4 0 000-8zM19 12a7 7 0 01-.1 1.2l2 1.6-2 3.4-2.4-1a7 7 0 01-2 1.2L14 21h-4l-.5-2.6a7 7 0 01-2-1.2l-2.4 1-2-3.4 2-1.6A7 7 0 015 12a7 7 0 01.1-1.2l-2-1.6 2-3.4 2.4 1a7 7 0 012-1.2L10 3h4l.5 2.6a7 7 0 012 1.2l2.4-1 2 3.4-2 1.6c.07.4.1.8.1 1.2z"]] : []),
+    ["entry", "Entry", "M16 3l5 5L8 21H3v-5L16 3z", true],
+    ["settings", "Settings", "M12 8a4 4 0 100 8 4 4 0 000-8zM19 12a7 7 0 01-.1 1.2l2 1.6-2 3.4-2.4-1a7 7 0 01-2 1.2L14 21h-4l-.5-2.6a7 7 0 01-2-1.2l-2.4 1-2-3.4 2-1.6A7 7 0 015 12a7 7 0 01.1-1.2l-2-1.6 2-3.4 2.4 1a7 7 0 012-1.2L10 3h4l.5 2.6a7 7 0 012 1.2l2.4-1 2 3.4-2 1.6c.07.4.1.8.1 1.2z", true],
   ];
 
   return (
@@ -1031,7 +1025,7 @@ function App() {
             "Workbook · " + new Date(ext.loadedAt).toLocaleDateString("en-JM", { day: "numeric", month: "short" })}</span>
           {admin ? (
             <button className="userchip" title="Sign out of admin"
-              onClick={() => { try { sessionStorage.removeItem("vmbs_admin"); } catch (e) {} setAdmin(false); if (tab === "settings") setTab("pulse"); }}>A</button>
+              onClick={() => { try { sessionStorage.removeItem("vmbs_admin"); } catch (e) {} setAdmin(false); if (tab === "settings" || tab === "entry") setTab("pulse"); }}>A</button>
           ) : (
             <button className="loginpill" onClick={() => { setPwOpen(true); setPwTry(""); setPwErr(""); }}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -1046,7 +1040,7 @@ function App() {
           {tab === "measures" && Measures}
           {tab === "history" && History}
           {tab === "report" && Report}
-          {tab === "entry" && Entry}
+          {tab === "entry" && (admin ? Entry : null)}
           {tab === "settings" && Settings}
         </div>
         {pwOpen && (
@@ -1054,20 +1048,28 @@ function App() {
             <div className="modal" onClick={e => e.stopPropagation()} onKeyDown={e => { if (e.key === "Escape") setPwOpen(false); }}>
               <button className="modalx" aria-label="Close" onClick={() => setPwOpen(false)}>✕</button>
               <div className="t15" style={{ marginBottom: 4, paddingRight: 28 }}>Admin sign-in</div>
-              <div className="sub13" style={{ marginBottom: 12 }}>Only needed for Settings — staff can use everything else without signing in.</div>
+              <div className="sub13" style={{ marginBottom: 12 }}>Needed for Entry and Settings. Viewing the dashboard, history and reports stays open to everyone.</div>
               <input className="login-in" type="password" placeholder="Admin password" value={pwTry} autoFocus
                 onChange={e => setPwTry(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") { if (pwTry === adminPw) { try { sessionStorage.setItem("vmbs_admin", "1"); } catch (err) {} setAdmin(true); setPwOpen(false); log("Admin signed in"); } else setPwErr("Incorrect password."); } }} />
+                onKeyDown={e => { if (e.key === "Enter") { if (pwTry === adminPw) { try { sessionStorage.setItem("vmbs_admin", "1"); } catch (err) {} setAdmin(true); setPwOpen(false); if (pwNext) { setTab(pwNext); setPwNext(null); } log("Signed in"); } else setPwErr("Incorrect password."); } }} />
               {pwErr && <div className="errmsg">{pwErr}</div>}
-              <button className="cta" onClick={() => { if (pwTry === adminPw) { try { sessionStorage.setItem("vmbs_admin", "1"); } catch (e) {} setAdmin(true); setPwOpen(false); log("Admin signed in"); } else setPwErr("Incorrect password."); }}>Unlock Settings</button>
+              <button className="cta" onClick={() => { if (pwTry === adminPw) { try { sessionStorage.setItem("vmbs_admin", "1"); } catch (e) {} setAdmin(true); setPwOpen(false); if (pwNext) { setTab(pwNext); setPwNext(null); } log("Signed in"); } else setPwErr("Incorrect password."); }}>Unlock</button>
               <button className="cta2" onClick={() => setPwOpen(false)}>Cancel</button>
             </div>
           </div>
         )}
         <div className="tabbar">
-          {tabs.map(([id, label, icon]) => (
-            <button key={id} className={"tabbtn" + (tab === id ? " on" : "")} onClick={() => { setTab(id); window.scrollTo(0, 0); }}>
-              <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={icon} /></svg>
+          {tabs.map(([id, label, icon, locked]) => (
+            <button key={id} className={"tabbtn" + (tab === id ? " on" : "")}
+              onClick={() => { if (locked && !admin) { setPwNext(id); setPwOpen(true); setPwTry(""); setPwErr(""); return; }
+                setTab(id); window.scrollTo(0, 0); }}>
+              <span className="iconwrap">
+                <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={icon} /></svg>
+                {locked && !admin && (
+                  <svg className="tablock" width="11" height="11" viewBox="0 0 24 24" fill="#fff" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="4" y="11" width="16" height="9" rx="2" /><path d="M8 11V7a4 4 0 018 0v4" /></svg>
+                )}
+              </span>
               <span>{label}</span>
             </button>))}
         </div>
