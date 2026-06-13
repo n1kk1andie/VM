@@ -503,7 +503,7 @@ function downloadMonthPDF(measures, mi, avg, yr) {
   const ytds = measures.map(it => { const v = it.m.slice(0, mi + 1).filter(x => typeof x === "number");
     return v.length ? v.reduce((x, y) => x + y, 0) / v.length : null; }).filter(v => v != null);
   const ytdAvg = ytds.length ? ytds.reduce((x, y) => x + y, 0) / ytds.length : null;
-  body.push(["", "", "", "Average:", pct(tAvg, 2), pct(avg), pct(ytdAvg)]);
+  body.push(["", "", "", "Average:", pct(tAvg, 2), pct(avg), avg != null && tAvg ? "Score: " + pct(avg / tAvg, 2) : "—"]);
   doc.autoTable({
     startY: 30, margin: { left: 14, right: 14 },
     head: [["Category", "Key Measures", "Description", "Tracker", "Monthly Target", "Actual", "Status"]],
@@ -527,6 +527,9 @@ function downloadMonthPDF(measures, mi, avg, yr) {
   if (y > pageH - 40) { doc.addPage(); y = 16; }
   doc.setFontSize(8); doc.setFont(undefined, "bold"); doc.setTextColor(28, 20, 22);
   doc.text("Status key", 14, y); y += 5; doc.setFont(undefined, "normal");
+  doc.setFontSize(7); doc.setTextColor(90, 80, 76);
+  doc.text("Average row — Actual: simple average of all " + measures.length + " published measures reported this month (mirrors the workbook's AVERAGE of actuals). Score: average actual ÷ average target. YTD attainment: " + pct(ytdAvg) + ".", 14, y, { maxWidth: 260 }); y += 8;
+  doc.setFontSize(8);
   [["on", "Exceeding expectation"], ["margin", "Steady progress"], ["off", "Needs a boost"], ["way", "Critical attention needed"]].forEach(([k, d2]) => {
     doc.setFillColor(...fills[k]); doc.rect(14, y - 3, 5, 4, "F");
     doc.setTextColor(...inks[k]); doc.setFont(undefined, "bold"); doc.text(STATUS[k].label, 21, y);
@@ -553,7 +556,9 @@ function downloadRangePDF(measures, from, to, avgFn, yr) {
   });
   let y = doc.lastAutoTable.finalY + 6;
   doc.setFontSize(8); doc.setFont(undefined, "bold");
-  doc.text("Division average — " + span.map((mo, k) => mo + ": " + pct(avgFn(from + k))).join("   ·   "), 14, y, { maxWidth: 260 });
+  const tA = measures.reduce((x, it) => x + it.target, 0) / Math.max(measures.length, 1);
+  doc.text("Division score (actual ÷ target) — " + span.map((mo, k) => { const a = avgFn(from + k);
+    return mo + ": " + pct(a != null && tA ? a / tA : null) + " (actual " + pct(a) + ")"; }).join("   ·   "), 14, y, { maxWidth: 260 });
   pdfFooter(doc);
   doc.save("VMBS_Ops_SLA_Monitor_" + MONTHS[from] + "-" + MONTHS[to] + "_" + yr + ".pdf");
 }
@@ -704,9 +709,9 @@ function App() {
   const Pulse = (
     <div>
       <div className="hero">
-        <div className="row between base"><span className="eyebrow">YTD ATTAINMENT</span><span className="dim12">Jan – {MONTHS[cycle]} {yr} (latest data)</span></div>
-        <div className="big">{pct(ytdAll)}</div>
-        <div className="dim13">against an average target of {pct(targetAvg)}</div>
+        <div className="row between base"><span className="eyebrow">YTD PERFORMANCE SCORE</span><span className="dim12">Jan – {MONTHS[cycle]} {yr} (latest data)</span></div>
+        <div className="big">{pct(ytdAll != null && targetAvg ? ytdAll / targetAvg : null)}</div>
+        <div className="dim13">actual {pct(ytdAll)} against an average target of {pct(targetAvg)} — score is actual ÷ target</div>
         <div style={{ marginTop: 16 }}>
           <div className="row" style={{ gap: 2.5 }}>
             {measures.map(it => { const s = stat(it.m[cycle], it.target);
@@ -815,6 +820,16 @@ function App() {
     const out = avg29.slice(0, 36);
     while (out.length < 36) { const mi = out.length - 24; out.push(monthHasData(mi) ? monthlyAvg(mi) : null); }
     return out; };
+  /* Performance score row = actual ÷ target, mirroring the workbook heat-map header.
+     Historical monthly targets from the Historical Trend sheet (row 4). */
+  const HTGT36 = [.9999,.9999,.9999,.9999,.9999,.9999,.9999,.9999,.9999,.9999,.9999,.9999,
+    .991,.991,.991,.991,.986,.983,.983,.983,.983,.983,.988,.988,
+    .988,.988,.988,.988,.988,.988,.988,.988,.988,.988,.988,.988];
+  const extScore = () => extAvg().map((v, i) => {
+    if (v == null) return null;
+    const t = HTGT36[i];
+    return t ? v / t : null; });
+  const extTgt = () => extAvg().map((v, i) => v == null ? null : HTGT36[i]);
 
   const History = (
     <div>
@@ -861,11 +876,11 @@ function App() {
               <div className="hmname" />
               {Array.from({ length: 36 }, (_, i) => <div key={i} className="hmmon">{MONTHS[i % 12][0]}</div>)}
             </div>
-            {extAvg().length > 0 && (
+            {extScore().some(v => v != null) && (
               <div className="row mid" style={{ marginBottom: 6 }}>
-                <div className="hmname b">Division average</div>
-                {extAvg().map((v, i) => <div key={i} className="hmcell" style={{ background: band(v) }}
-                  onClick={() => setCell({ name: "Division average", label: MONTHS[i % 12] + " " + (hmStart + Math.floor(i / 12)), v })} />)}
+                <div className="hmname b">Performance score</div>
+                {extScore().map((v, i) => <div key={i} className="hmcell" style={{ background: band(v) }}
+                  onClick={() => setCell({ name: "Performance score (actual ÷ target)", label: MONTHS[i % 12] + " " + (hmStart + Math.floor(i / 12)), v })} />)}
               </div>)}
             {(hist || []).map(grp => (
               <div key={grp.g}>
@@ -920,7 +935,8 @@ function App() {
         return (
           <div className="card" style={{ marginTop: 12 }}>
             <div className="row between base"><div className="t14">{label} {yr}</div>
-              <div className="num18" style={{ color: "#E4012B" }}>{pct(monthlyAvg(to))}</div></div>
+              <div className="num18" style={{ color: "#E4012B" }}>{pct(monthlyAvg(to) != null && targetAvg ? monthlyAvg(to) / targetAvg : null, 2)}</div></div>
+            <div className="sub" style={{ marginTop: 2, textAlign: "right" }}>performance score · actual {pct(monthlyAvg(to))} vs target {pct(targetAvg, 2)}</div>
             <div className="row gap8 wrap" style={{ margin: "10px 0 14px" }}>
               {Object.keys(STATUS).map(k => <span key={k} className="pill" style={{ background: STATUS[k].bg, color: STATUS[k].color }}>{c[k]} {STATUS[k].label}</span>)}
             </div>
