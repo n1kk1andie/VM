@@ -527,9 +527,6 @@ function downloadMonthPDF(measures, mi, avg, yr) {
   if (y > pageH - 40) { doc.addPage(); y = 16; }
   doc.setFontSize(8); doc.setFont(undefined, "bold"); doc.setTextColor(28, 20, 22);
   doc.text("Status key", 14, y); y += 5; doc.setFont(undefined, "normal");
-  doc.setFontSize(7); doc.setTextColor(90, 80, 76);
-  doc.text("Average row — Actual: simple average of all " + measures.length + " published measures reported this month (mirrors the workbook's AVERAGE of actuals). Score: average actual ÷ average target. YTD attainment: " + pct(ytdAvg) + ".", 14, y, { maxWidth: 260 }); y += 8;
-  doc.setFontSize(8);
   [["on", "Exceeding expectation"], ["margin", "Steady progress"], ["off", "Needs a boost"], ["way", "Critical attention needed"]].forEach(([k, d2]) => {
     doc.setFillColor(...fills[k]); doc.rect(14, y - 3, 5, 4, "F");
     doc.setTextColor(...inks[k]); doc.setFont(undefined, "bold"); doc.text(STATUS[k].label, 21, y);
@@ -711,7 +708,7 @@ function App() {
       <div className="hero">
         <div className="row between base"><span className="eyebrow">YTD PERFORMANCE SCORE</span><span className="dim12">Jan – {MONTHS[cycle]} {yr} (latest data)</span></div>
         <div className="big">{pct(ytdAll != null && targetAvg ? ytdAll / targetAvg : null)}</div>
-        <div className="dim13">actual {pct(ytdAll)} against an average target of {pct(targetAvg)} — score is actual ÷ target</div>
+        <div className="dim13">actual {pct(ytdAll)} · average target {pct(targetAvg)}</div>
         <div style={{ marginTop: 16 }}>
           <div className="row" style={{ gap: 2.5 }}>
             {measures.map(it => { const s = stat(it.m[cycle], it.target);
@@ -855,9 +852,6 @@ function App() {
             ["#E07B00", "Non-Competitive", "80–90%"], ["#B5142A", "Unacceptable", "< 80%"],
             ["#EFE9E6", "Not tracked", ""]].map(([c, l, r]) =>
             <span key={l}><span className="sw" style={{ background: c }} /><strong>{l}</strong>{r ? "\u00A0" + r : ""}</span>)}
-        </div>
-        <div className="sub" style={{ marginTop: 8 }}>
-          Industry performance benchmarks — deliberately separate from the VMBS business targets and status rules used on the Report tab and in the published monitor.
         </div>
       </div>
       {cell && (
