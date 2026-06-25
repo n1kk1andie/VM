@@ -3,7 +3,7 @@
  * GET  /api/data  -> returns the latest published workbook JSON (or {} if none).
  *                   Public; every visitor reads the same figures.
  * POST /api/data  -> publishes a workbook JSON so everyone sees it.
- *                   Requires header  Authorization: Bearer <ADMIN_TOKEN>.
+ *                   Open (no key) — uploading is gated to admins in the app.
  *
  * Storage is a single Vercel Blob at sla-data/current.json.
  *
@@ -19,10 +19,9 @@
  *   BLOB_READ_WRITE_TOKEN  - added automatically when a Blob store is connected.
  *                            (A non-default store may expose it under another name;
  *                            we also detect any value starting with vercel_blob_rw_.)
- *   ADMIN_TOKEN            - a secret you choose; admins enter it to publish.
  *
- * Until those are set the endpoint stays inert: GET returns {} and POST returns
- * an error, so the app simply falls back to its on-device behaviour.
+ * Until the store is connected the endpoint stays inert: GET returns {} and POST
+ * returns an error, so the app simply falls back to its on-device behaviour.
  */
 import { put, list, issueSignedToken, presignUrl } from "@vercel/blob";
 
@@ -85,9 +84,7 @@ export default async function handler(req, res) {
   }
 
   if (req.method === "POST") {
-    const auth = (req.headers.authorization || "").replace(/^Bearer\s+/i, "");
-    if (!process.env.ADMIN_TOKEN) return res.status(503).json({ error: "publishing is not configured on the server" });
-    if (auth !== process.env.ADMIN_TOKEN) return res.status(401).json({ error: "invalid publish key" });
+    // Publishing is open — no key. Uploading is gated in the app (admin only).
     if (!token) return res.status(503).json({ error: "the shared store isn't connected on the server yet" });
     try {
       let body = req.body;
