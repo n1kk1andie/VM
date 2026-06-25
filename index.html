@@ -669,12 +669,54 @@ function App() {
       const obj = { type: "file", measures: parseKeySheet(key), hist: hrows ? parseHistSheet(hrows) : null,
         year: Number((keyName.match(/20\d\d/) || [DATA_YEAR])[0]),
         raw: b64FromBuffer(buf), label: file.name, loadedAt: new Date().toISOString() };
-      setExt(obj); ls.set("vmbs_workbook", obj); setLiveMsg("Loaded \"" + file.name + "\" — the new figures are now live across every tab.");
+      setExt(obj); ls.set("vmbs_workbook", obj); setLiveMsg("Read \"" + file.name + "\" — publishing…");
       log("Loaded workbook: " + file.name);
+      return obj;
     } catch (e) { setLiveMsg("Could not read the workbook — " + e.message); }
   };
   const revertSource = () => { setExt(null); try { localStorage.removeItem("vmbs_workbook"); } catch (e) {}
     setLiveMsg(""); log("Reverted to built-in dataset"); };
+
+  /* Pull the shared, published figures on load so every visitor sees the same data.
+     If nothing is published (or the store isn't set up), this no-ops and the app
+     keeps its on-device / built-in data. */
+  useEffect(() => {
+    let live = true;
+    (async () => {
+      try {
+        const r = await fetch("/api/data", { cache: "no-store" });
+        if (!r.ok) return;
+        const d = await r.json();
+        if (live && d && d.measures) { setExt(d); ls.set("vmbs_workbook", d); }
+      } catch (e) {}
+    })();
+    return () => { live = false; };
+  }, []);
+
+  /* Publish an uploaded workbook to the shared store so every visitor sees it.
+     Needs the publish key (ADMIN_TOKEN) once per session; without it the upload
+     stays on this device only. */
+  const publish = async (obj) => {
+    if (!obj) return;
+    let key = ""; try { key = sessionStorage.getItem("vmbs_pub_key") || ""; } catch (e) {}
+    if (!key) {
+      key = (window.prompt("Enter the publish key to update the data for EVERYONE.\n\nLeave blank to keep this upload on this device only.") || "").trim();
+      if (key) { try { sessionStorage.setItem("vmbs_pub_key", key); } catch (e) {} }
+    }
+    if (!key) { setLiveMsg("Saved on this device only — no publish key entered, so other people won't see this update."); return; }
+    try {
+      const r = await fetch("/api/data", { method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key }, body: JSON.stringify(obj) });
+      if (r.status === 401) { try { sessionStorage.removeItem("vmbs_pub_key"); } catch (e) {} throw new Error("the publish key was rejected"); }
+      if (r.status === 503) throw new Error("the shared store isn't set up on the server yet");
+      if (!r.ok) throw new Error("server returned " + r.status);
+      setLiveMsg("Published \"" + obj.label + "\" — everyone now sees these figures the next time they open or refresh the monitor.");
+      log("Published workbook to shared store: " + obj.label);
+    } catch (e) {
+      setLiveMsg("Saved on this device, but could not publish to everyone — " + e.message + ".");
+    }
+  };
+  const uploadFile = (f) => loadFile(f).then(publish);
 
   /* Download the current data as an Excel workbook the app can read straight back.
      If an uploaded file is in hand, hand back those exact bytes (keeps every sheet);
@@ -978,7 +1020,7 @@ function App() {
 
   const Settings = !admin ? null : (
     <SettingsScreen adminPw={adminPw} setAdminPw={p => { setAdminPw(p); ls.set("vmbs_admin_pw", p); log("Changed admin password"); }}
-      loadFile={loadFile} downloadDataFile={downloadDataFile} ext={ext} liveMsg={liveMsg} yr={yr} cycle={cycle} />
+      loadFile={uploadFile} downloadDataFile={downloadDataFile} ext={ext} liveMsg={liveMsg} yr={yr} cycle={cycle} />
   );
 
   const tabs = [
@@ -1058,7 +1100,7 @@ const UPDATE_STEPS = [
   { n: "1", title: "Download", body: 'Tap "Download data file" above to get the current workbook. It holds every measure with the months entered so far.' },
   { n: "2", title: "Add the new month", body: "On the Key Processes & SLA sheet, fill in the new month's column with each measure's actual. Enter percentages as decimals — e.g. 0.964 for 96.4%. Leave a cell blank if there is no data, or type N/A where it does not apply." },
   { n: "3", title: "Leave the setup columns and second sheet alone", body: "Keep the Owner, Unit, YTD SLA % Target and For Publication (YES) columns as they are — only rows marked YES appear in the monitor. Also leave the second “Historical Trend 2024-2026” sheet untouched; it carries the History heat map so it survives the upload." },
-  { n: "4", title: "Upload & verify", body: 'Save the file, then tap "Upload data file" below. The new figures publish across every tab and the report straight away.' },
+  { n: "4", title: "Upload & publish", body: 'Save the file, then tap "Upload data file" below and enter the publish key when asked. The new figures are saved to the shared store and go live for everyone — across every tab and the report — on their next refresh.' },
 ];
 
 function SettingsScreen({ adminPw, setAdminPw, loadFile, downloadDataFile, ext, liveMsg, yr, cycle }) {
@@ -1091,7 +1133,7 @@ function SettingsScreen({ adminPw, setAdminPw, loadFile, downloadDataFile, ext, 
           <button className="cta" style={{ flex: 1, background: "#1C1416" }} onClick={() => fileRef.current && fileRef.current.click()}>⬆ Upload data file</button>
         </div>
         {liveMsg && <div className="sub b" style={{ marginTop: 10 }}>{liveMsg}</div>}
-        <div className="sub" style={{ marginTop: 10 }}>Updating the monitor is download → edit in Excel → upload. The uploaded workbook is the official data record and is remembered on this device until you upload a new one.</div>
+        <div className="sub" style={{ marginTop: 10 }}>Updating the monitor is download → edit in Excel → upload. On upload you're asked once for the <b>publish key</b>; with it, the workbook is saved to the shared store and <b>everyone</b> sees the new figures on their next refresh. Without the key the upload stays on this device only.</div>
       </div>
 
       <div className="h2l">Monthly update instructions</div>
