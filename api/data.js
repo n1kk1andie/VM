@@ -7,13 +7,9 @@
  *
  * Storage is a single Vercel Blob at sla-data/current.json.
  *
- * The blob is written with access: "private". Vercel Blob stores created today
- * default to PRIVATE, and a private blob is NOT fetchable by its plain URL — so
- * the old public put + plain-URL read silently failed on a private store, leaving
- * uploads stranded on the uploader's device. Reads now go through a short-lived
- * presigned GET URL (issueSignedToken -> presignUrl -> fetch), which requires
- * @vercel/blob v2. A legacy public blob at the same path is still read via the
- * list() fallback, so this keeps working on an older public store too.
+ * The blob is written with access: "public" — the SLA figures are not sensitive
+ * and every visitor reads the same data. POST find-or-overwrites the single
+ * current.json blob; GET locates it with list() and fetches its public URL.
  *
  * Required environment variables (set in the Vercel project):
  *   BLOB_READ_WRITE_TOKEN  - added automatically when a Blob store is connected.
@@ -23,7 +19,7 @@
  * Until the store is connected the endpoint stays inert: GET returns {} and POST
  * returns an error, so the app simply falls back to its on-device behaviour.
  */
-import { put, list, issueSignedToken, presignUrl } from "@vercel/blob";
+import { put, list } from "@vercel/blob";
 
 const PATH = "sla-data/current.json";
 
@@ -40,19 +36,11 @@ function blobToken() {
   return undefined;
 }
 
-/* Read the stored JSON. Tries a presigned private GET first (the store's default
-   today); falls back to list() + plain-URL fetch for a legacy public blob. Returns
-   null when nothing is published or the store isn't configured. */
+/* Read the stored JSON. The blob is written with public access, so we find it
+   with list() and fetch its public URL. Returns null when nothing is published
+   or the store isn't configured. */
 async function readData(token) {
   if (!token) return null;
-  // Private path: presign a short-lived GET URL.
-  try {
-    const signed = await issueSignedToken({ pathname: PATH, operations: ["get"], token });
-    const { presignedUrl } = await presignUrl(signed, { operation: "get", pathname: PATH, access: "private" });
-    const r = await fetch(presignedUrl, { cache: "no-store" });
-    if (r.ok) return await r.json();
-  } catch (e) { /* fall through to the public fallback */ }
-  // Public fallback: a blob written by the old code is fetchable by its URL.
   try {
     const { blobs } = await list({ prefix: PATH, token });
     const hit = blobs.find(b => b.pathname === PATH);
@@ -92,7 +80,7 @@ export default async function handler(req, res) {
       if (!body || !body.measures) return res.status(400).json({ error: "no measures in the uploaded data" });
       const payload = JSON.stringify({ ...body, publishedAt: new Date().toISOString() });
       await put(PATH, payload, {
-        access: "private",
+        access: "public", // figures are public — every visitor reads the same data
         addRandomSuffix: false, // always overwrite the single current.json blob
         allowOverwrite: true,
         contentType: "application/json",
