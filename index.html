@@ -288,6 +288,17 @@ const ls = {
   get(k, fb) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : fb; } catch (e) { return fb; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
 };
+const XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+function b64FromBuffer(buf) {
+  const u8 = new Uint8Array(buf); let bin = "";
+  for (let i = 0; i < u8.length; i += 0x8000) bin += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+function bufferFromB64(b64) {
+  const bin = atob(b64); const u8 = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+  return u8;
+}
 function dl(content, name, type) {
   const b = content instanceof Blob ? content : new Blob([content], { type });
   const a = document.createElement("a");
@@ -645,7 +656,8 @@ function App() {
     try {
       if (!window.XLSX) throw new Error("the Excel reader library has not loaded — check internet access");
       setLiveMsg("Reading " + file.name + "…");
-      const wb = XLSX.read(await file.arrayBuffer(), { type: "array" });
+      const buf = await file.arrayBuffer();
+      const wb = XLSX.read(buf, { type: "array" });
       const findName = n => wb.SheetNames.find(s => s.trim().toLowerCase() === n.toLowerCase()) ||
         wb.SheetNames.find(s => s.toLowerCase().includes(n.split(" ")[0].toLowerCase()));
       const sheet = n => { const k = findName(n);
@@ -656,13 +668,42 @@ function App() {
       const hrows = sheet(CONFIG.histSheet);
       const obj = { type: "file", measures: parseKeySheet(key), hist: hrows ? parseHistSheet(hrows) : null,
         year: Number((keyName.match(/20\d\d/) || [DATA_YEAR])[0]),
-        label: file.name, loadedAt: new Date().toISOString() };
-      setExt(obj); ls.set("vmbs_workbook", obj); setLiveMsg("");
+        raw: b64FromBuffer(buf), label: file.name, loadedAt: new Date().toISOString() };
+      setExt(obj); ls.set("vmbs_workbook", obj); setLiveMsg("Loaded \"" + file.name + "\" — the new figures are now live across every tab.");
       log("Loaded workbook: " + file.name);
     } catch (e) { setLiveMsg("Could not read the workbook — " + e.message); }
   };
   const revertSource = () => { setExt(null); try { localStorage.removeItem("vmbs_workbook"); } catch (e) {}
     setLiveMsg(""); log("Reverted to built-in dataset"); };
+
+  /* Download the current data as an Excel workbook the app can read straight back.
+     If an uploaded file is in hand, hand back those exact bytes (keeps every sheet);
+     otherwise build a Key Processes & SLA sheet from the data on screen. */
+  const downloadDataFile = () => {
+    try {
+      if (ext && ext.raw) {
+        const name = ext.label && /\.xls/i.test(ext.label) ? ext.label : "VMBS_Operations_SLA_Data.xlsx";
+        dl(new Blob([bufferFromB64(ext.raw)], { type: XLSX_MIME }), name, XLSX_MIME);
+        log("Downloaded data file: " + name); return;
+      }
+      if (!window.XLSX) throw new Error("the Excel library has not loaded — check internet access");
+      const UNIT = { TPE: "Treasury & Payments", BSS: "Business Support Services",
+        PEE: "Quality & Process Effectiveness", SRP: "Account Services", POL: "Policies", OTH: "Other" };
+      const MONTHFULL = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+      const header = ["Key Processes", "Owner", "Unit", "SLA Target", "YTD SLA % Target", "For Publication", "Comments", ...MONTHFULL];
+      const aoa = [header];
+      measures.forEach(it => {
+        const months = MONTHFULL.map((_, i) => { const v = it.m[i];
+          return v === "NA" ? "N/A" : typeof v === "number" ? v : ""; });
+        aoa.push([it.name, it.owner, UNIT[it.cat] || "Other", it.d || "", it.target, "YES", it.note || "", ...months]);
+      });
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), CONFIG.keySheet);
+      const name = "VMBS_Operations_SLA_Data_" + yr + ".xlsx";
+      dl(new Blob([XLSX.write(wb, { bookType: "xlsx", type: "array" })], { type: XLSX_MIME }), name, XLSX_MIME);
+      log("Downloaded data file: " + name);
+    } catch (e) { setLiveMsg("Could not build the data file — " + e.message); }
+  };
 
   const goMeasures = (st, cat) => { setStatusFilter(st || null); setCatFilter(cat || null); setOpen(null); setTab("measures"); };
 
@@ -919,8 +960,7 @@ function App() {
 
   const Settings = !admin ? null : (
     <SettingsScreen adminPw={adminPw} setAdminPw={p => { setAdminPw(p); ls.set("vmbs_admin_pw", p); log("Changed admin password"); }}
-      measures={measures} ovr={ovr} setOvr={o => { setOvr(o); ls.set("vmbs_admin_ovr", o); }} log={log} audit={audit}
-      connect={connect} loadFile={loadFile} revertSource={revertSource} ext={ext} liveMsg={liveMsg} />
+      loadFile={loadFile} downloadDataFile={downloadDataFile} ext={ext} liveMsg={liveMsg} yr={yr} cycle={cycle} />
   );
 
   const tabs = [
@@ -996,107 +1036,56 @@ function App() {
   );
 }
 
-function SettingsScreen({ adminPw, setAdminPw, measures, ovr, setOvr, log, audit, connect, loadFile, revertSource, ext, liveMsg }) {
+const UPDATE_STEPS = [
+  { n: "1", title: "Download", body: 'Tap "Download data file" above to get the current workbook. It holds every measure with the months entered so far.' },
+  { n: "2", title: "Add the new month", body: "On the Key Processes & SLA sheet, fill in the new month's column with each measure's actual. Enter percentages as decimals — e.g. 0.964 for 96.4%. Leave a cell blank if there is no data, or type N/A where it does not apply." },
+  { n: "3", title: "Leave the setup columns alone", body: "Keep the Owner, Unit, YTD SLA % Target and For Publication (YES) columns as they are. Only rows marked YES appear in the monitor." },
+  { n: "4", title: "Upload & verify", body: 'Save the file, then tap "Upload data file" below. The new figures publish across every tab and the report straight away.' },
+];
+
+function SettingsScreen({ adminPw, setAdminPw, loadFile, downloadDataFile, ext, liveMsg, yr, cycle }) {
   const [cur, setCur] = useState(""); const [n1, setN1] = useState(""); const [n2, setN2] = useState(""); const [pwMsg, setPwMsg] = useState("");
   const fileRef = React.useRef(null);
-  const [nm, setNm] = useState({ name: "", owner: "", cat: "BSS", target: "99.99" });
-  const owners = [...new Set(measures.map(it => it.owner))].sort();
   const changePw = () => {
     if (cur !== adminPw) return setPwMsg("Current password is incorrect.");
     if (n1.length < 6) return setPwMsg("New password must be at least 6 characters.");
     if (n1 !== n2) return setPwMsg("New passwords do not match.");
     setAdminPw(n1); setCur(""); setN1(""); setN2(""); setPwMsg("Password changed on this device.");
   };
-  const renameOwner = (oldName) => {
-    const nn = window.prompt("New officer name to replace '" + oldName + "':", oldName);
-    if (!nn || nn.trim() === oldName) return;
-    const owners2 = { ...ovr.owners };
-    measures.filter(it => it.owner === oldName).forEach(it => { owners2[it.name] = nn.trim(); });
-    setOvr({ ...ovr, owners: owners2 }); log("Reassigned measures from " + oldName + " to " + nn.trim());
-  };
-  const editMeasure = (it) => {
-    const nn = window.prompt("Measure name:", it.name); if (nn == null) return;
-    const no = window.prompt("Officer / manager:", it.owner); if (no == null) return;
-    const nt = window.prompt("Target % (e.g. 99.99):", (it.target * 100).toFixed(2)); if (nt == null) return;
-    const next = { ...ovr, renames: { ...ovr.renames }, owners: { ...ovr.owners }, targets: { ...ovr.targets } };
-    if (nn.trim() && nn.trim() !== it.name) next.renames[it.name] = nn.trim();
-    if (no.trim() && no.trim() !== it.owner) next.owners[it.name] = no.trim();
-    const t = parseFloat(nt); if (!isNaN(t) && t > 0 && t <= 100) next.targets[it.name] = +(t / 100).toFixed(4);
-    setOvr(next); log("Edited measure: " + it.name);
-  };
-  const retire = (it) => {
-    if (!window.confirm("Retire '" + it.name + "'? It drops out of all views and reports but stays in workbook history.")) return;
-    setOvr({ ...ovr, retired: [...ovr.retired, it.name] }); log("Retired measure: " + it.name);
-  };
-  const restore = (name) => { setOvr({ ...ovr, retired: ovr.retired.filter(r => r !== name) }); log("Restored measure: " + name); };
-  const addMeasure = () => {
-    if (!nm.name.trim() || !nm.owner.trim()) return;
-    const t = parseFloat(nm.target);
-    setOvr({ ...ovr, added: [...ovr.added, { id: "add-" + Date.now(), name: nm.name.trim(), owner: nm.owner.trim(),
-      cat: nm.cat, target: isNaN(t) ? .9999 : +(t / 100).toFixed(4) }] });
-    log("Added measure: " + nm.name.trim());
-    setNm({ name: "", owner: "", cat: "BSS", target: "99.99" });
-  };
+  const sourceLabel = !ext ? "Built-in data · latest month " + MONTHS[cycle] + " " + yr
+    : ext.type === "graph" ? "Live · SharePoint workbook"
+    : "Workbook · \"" + ext.label + "\", loaded " + new Date(ext.loadedAt).toLocaleString("en-JM");
   return (
     <div>
+      <div className="h2l">Data file</div>
       <div className="card">
-        <div className="t15">Data source</div>
-        <div className="sub13" style={{ margin: "4px 0 10px" }}>
-          {!ext ? "Running on the built-in dataset (May 2026). Load your Excel workbook straight from this device — no IT needed. SharePoint connection becomes available once GICT completes the setup guide."
-            : ext.type === "graph" ? "Connected — reading the live workbook on SharePoint."
-            : "Using \"" + ext.label + "\", loaded " + new Date(ext.loadedAt).toLocaleString("en-JM") + ". When the Excel file is updated each month, load it again here to refresh — one tap."}
+        <div className="row between mid" style={{ marginBottom: 12 }}>
+          <div>
+            <div className="t14">Current data</div>
+            <div className="sub13" style={{ marginTop: 3 }}>{sourceLabel}</div>
+          </div>
+          <span className={"srcbadge" + (ext ? " live" : "")}>{ext ? "Live" : "Built-in"}</span>
         </div>
         <input ref={fileRef} type="file" accept=".xlsx,.xlsm" style={{ display: "none" }}
           onChange={e => { const f = e.target.files && e.target.files[0]; if (f) loadFile(f); e.target.value = ""; }} />
-        <button className="cta" onClick={() => fileRef.current && fileRef.current.click()}>Load Excel workbook (from this device)</button>
-        <button className="cta2" onClick={connect}>Connect to SharePoint (after GICT setup)</button>
-        {ext && <button className="cta2" onClick={revertSource}>Reset to built-in dataset</button>}
-        {liveMsg && <div className="sub b" style={{ marginTop: 8 }}>{liveMsg}</div>}
-        <div className="sub" style={{ marginTop: 8 }}>The loaded workbook is remembered on this device until replaced. Each device loads the file once; the SharePoint connection (Phase 2) removes that step for everyone.</div>
-      </div>
-
-      <div className="h2l">Officers</div>
-      <div className="card" style={{ padding: "4px 14px" }}>
-        {owners.map((o, i) => (
-          <div key={o} className="row mid between" style={{ padding: "10px 0", borderBottom: i < owners.length - 1 ? "1px solid #F1ECE9" : "none" }}>
-            <div style={{ fontSize: 13 }}>{o}<span className="sub" style={{ display: "block", fontSize: 10.5 }}>
-              {measures.filter(it => it.owner === o).length} measures</span></div>
-            <button className="minibtn" onClick={() => renameOwner(o)}>Replace officer</button>
-          </div>))}
-      </div>
-
-      <div className="h2l">Measures</div>
-      <div className="card" style={{ padding: "4px 14px" }}>
-        {measures.map((it, i) => (
-          <div key={it.name} className="row mid gap8" style={{ padding: "9px 0", borderBottom: i < measures.length - 1 ? "1px solid #F1ECE9" : "none" }}>
-            <div style={{ flex: 1, fontSize: 12.5, lineHeight: 1.3 }}>{it.name}
-              <span className="sub" style={{ display: "block", fontSize: 10.5 }}>{it.owner} · {CATNAME[it.cat]} · target {pct(it.target, 2)}</span></div>
-            <button className="minibtn" onClick={() => editMeasure(it)}>Edit</button>
-            <button className="minibtn warn" onClick={() => retire(it)}>Retire</button>
-          </div>))}
-      </div>
-      {ovr.retired.length > 0 && (<>
-        <div className="h2l">Retired measures</div>
-        <div className="card" style={{ padding: "4px 14px" }}>
-          {ovr.retired.map((name, i) => (
-            <div key={name} className="row mid between" style={{ padding: "9px 0", borderBottom: i < ovr.retired.length - 1 ? "1px solid #F1ECE9" : "none" }}>
-              <div style={{ fontSize: 12.5, color: "#8A7E7A" }}>{name}</div>
-              <button className="minibtn" onClick={() => restore(name)}>Restore</button>
-            </div>))}
-        </div></>)}
-
-      <div className="h2l">Add a measure</div>
-      <div className="card col gap8">
-        <input className="login-in" placeholder="Measure name" value={nm.name} onChange={e => setNm({ ...nm, name: e.target.value })} />
-        <input className="login-in" placeholder="Officer / manager" value={nm.owner} onChange={e => setNm({ ...nm, owner: e.target.value })} />
-        <div className="row gap8 mid">
-          <select className="sel" value={nm.cat} onChange={e => setNm({ ...nm, cat: e.target.value })}>
-            {CATLIST.map(c => <option key={c} value={c}>{CATNAME[c]}</option>)}</select>
-          <input className="login-in" style={{ width: 110, marginBottom: 0 }} placeholder="Target %" value={nm.target}
-            onChange={e => setNm({ ...nm, target: e.target.value })} />
+        <div className="row gap8">
+          <button className="cta" style={{ flex: 1 }} onClick={downloadDataFile}>⬇ Download data file</button>
+          <button className="cta" style={{ flex: 1, background: "#1C1416" }} onClick={() => fileRef.current && fileRef.current.click()}>⬆ Upload data file</button>
         </div>
-        <button className="cta2" onClick={addMeasure}>Add measure</button>
-        <div className="sub">New measures start with no actuals. Add the same row to the Excel workbook and reload it here so the actuals flow through and the official record matches.</div>
+        {liveMsg && <div className="sub b" style={{ marginTop: 10 }}>{liveMsg}</div>}
+        <div className="sub" style={{ marginTop: 10 }}>Updating the monitor is download → edit in Excel → upload. The uploaded workbook is the official data record and is remembered on this device until you upload a new one.</div>
+      </div>
+
+      <div className="h2l">Monthly update instructions</div>
+      <div className="card">
+        {UPDATE_STEPS.map(({ n, title, body }) => (
+          <div key={n} className="row gap10" style={{ padding: "9px 0", borderTop: n !== "1" ? "1px solid #F1ECE9" : "none", alignItems: "flex-start" }}>
+            <div style={{ fontFamily: "Sora", fontSize: 11, fontWeight: 800, color: "#E4012B", flexShrink: 0, paddingTop: 2, minWidth: 16 }}>{n}</div>
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 2 }}>{title}</div>
+              <div className="sub13" style={{ lineHeight: 1.5 }}>{body}</div>
+            </div>
+          </div>))}
       </div>
 
       <div className="h2l">Admin password</div>
@@ -1109,17 +1098,8 @@ function SettingsScreen({ adminPw, setAdminPw, measures, ovr, setOvr, log, audit
         <div className="sub">The password is held in this app on each device, not on a server — so a change applies to the device where it's made. Treat this as pilot-level access control; Microsoft 365 sign-in replaces it when GICT connects the app.</div>
       </div>
 
-      <div className="h2l">Audit log</div>
-      <div className="card" style={{ padding: "4px 14px", maxHeight: 280, overflowY: "auto" }}>
-        {audit.length === 0 && <div className="sub" style={{ padding: "10px 0" }}>No activity recorded yet on this device.</div>}
-        {audit.map((a, i) => (
-          <div key={i} style={{ padding: "8px 0", borderBottom: i < audit.length - 1 ? "1px solid #F1ECE9" : "none" }}>
-            <div style={{ fontSize: 12 }}>{a.action}</div>
-            <div className="sub" style={{ fontSize: 10.5 }}>{a.who} · {new Date(a.when).toLocaleString("en-JM")}</div>
-          </div>))}
-      </div>
-      <div className="sub" style={{ margin: "10px 4px 20px" }}>
-        Settings changes and the audit log are stored on this device until the SharePoint write-back phase. Mirror any permanent changes (officers, targets, new or retired measures) in the Excel workbook, which remains the governance record.
+      <div className="sub" style={{ margin: "16px 4px 20px", textAlign: "center" }}>
+        The uploaded Excel workbook is the official data record.
       </div>
     </div>
   );
