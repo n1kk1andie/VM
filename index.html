@@ -177,7 +177,6 @@ const CATS = {
   SRP: "Service Request Processing",
   PEE: "Process Effectiveness",
 };
-const DEADLINES = ["Mon 9 Feb 2026","Mon 9 Mar 2026","Mon 13 Apr 2026","Mon 11 May 2026","Mon 8 Jun 2026","Mon 13 Jul 2026","Mon 10 Aug 2026","Mon 14 Sep 2026","Mon 12 Oct 2026","Mon 9 Nov 2026","Mon 14 Dec 2026","Mon 11 Jan 2027"];
 
 /* 40 published measures · Jan–May 2026 actuals from Key Processes & SLA */
 const DATA = [
@@ -578,10 +577,8 @@ function App() {
   const [pwNext, setPwNext] = useState(null);
   const [pwTry, setPwTry] = useState("");
   const [pwErr, setPwErr] = useState("");
-  const [enteredBy, setEnteredBy] = useState(() => { try { return localStorage.getItem("vmbs_entered_by") || "" } catch (e) { return "" } });
   const [tab, setTab] = useState("pulse");
   const [adminPw, setAdminPw] = useState(() => ls.get("vmbs_admin_pw", "pa55w0rd"));
-  const [entries, setEntries] = useState({});
   const [ovr, setOvr] = useState(() => ls.get("vmbs_admin_ovr", { renames: {}, retired: [], added: [], targets: {}, owners: {} }));
   const [audit, setAudit] = useState(() => ls.get("vmbs_audit", []));
   const [ext, setExt] = useState(() => ls.get("vmbs_workbook", null));
@@ -589,11 +586,6 @@ function App() {
   const [statusFilter, setStatusFilter] = useState(null);
   const [catFilter, setCatFilter] = useState(null);
   const [open, setOpen] = useState(null);
-  const [entryMonth, setEntryMonth] = useState(5);
-  const [entryOwner, setEntryOwner] = useState(null);
-  const [entryCat, setEntryCat] = useState(null);
-  const [draft, setDraft] = useState({});
-  const [saveMsg, setSaveMsg] = useState("");
   const [repMode, setRepMode] = useState("month");
   const [repM, setRepM] = useState(4);
   const [repFrom, setRepFrom] = useState(0);
@@ -602,12 +594,11 @@ function App() {
 
   const yr = (ext && ext.year) || DATA_YEAR;
   const hmStart = yr - 2;
-  useEffect(() => { setEntries(ls.get("vmbs_entries_" + yr, {})); }, [yr]);
 
-  const log = (action) => { const next = [{ who: admin ? "Administrator" : (enteredBy.trim() || "Viewer"), when: new Date().toISOString(), action }, ...audit].slice(0, 200);
+  const log = (action) => { const next = [{ who: admin ? "Administrator" : "Viewer", when: new Date().toISOString(), action }, ...audit].slice(0, 200);
     setAudit(next); ls.set("vmbs_audit", next); };
 
-  /* effective measure list: live||demo + admin overrides + staff entries */
+  /* effective measure list: uploaded workbook || built-in dataset + admin overrides */
   const measures = useMemo(() => {
     const base = (ext ? ext.measures : DATA).map(it => ({ ...it,
       d: it.d || DESC[it.id] || "",
@@ -621,13 +612,9 @@ function App() {
         if (ovr.renames[it.name]) out.name = ovr.renames[it.name];
         if (ovr.owners[it.name]) out.owner = ovr.owners[it.name];
         if (ovr.targets[it.name] != null) out.target = ovr.targets[it.name];
-        out.m = out.m.map((v, mi) => {
-          const e = entries[mi] && entries[mi][it.name];
-          return e !== undefined ? e : v;
-        });
         return out;
       });
-  }, [ext, ovr, entries]);
+  }, [ext, ovr]);
 
   const owners = useMemo(() => [...new Set(measures.map(it => it.owner))].sort(), [measures]);
   const monthHasData = mi => measures.some(it => typeof it.m[mi] === "number");
@@ -643,14 +630,7 @@ function App() {
   const avg29 = ext ? (ext.hist ? ext.hist.avg : null) : HAVG;
   const histLinked = !ext; /* built-in HIST rows link to built-in measures for 2026 extension */
 
-  useEffect(() => { /* entry draft */
-    const d = {};
-    measures.forEach(it => { const v = it.m[entryMonth];
-      d[it.name] = v === "NA" ? "NA" : typeof v === "number" ? String(+(v * 100).toFixed(2)) : ""; });
-    setDraft(d); setSaveMsg("");
-  }, [entryMonth, measures.length, entries]);
-
-  useEffect(() => { setRepM(cycle); setRepTo(cycle); setEntryMonth(Math.min(cycle + 1, 11)); }, [ext]);
+  useEffect(() => { setRepM(cycle); setRepTo(cycle); }, [ext]);
 
   const connect = async () => {
     try { const r = await graphLoad(setLiveMsg);
@@ -684,24 +664,10 @@ function App() {
   const revertSource = () => { setExt(null); try { localStorage.removeItem("vmbs_workbook"); } catch (e) {}
     setLiveMsg(""); log("Reverted to built-in dataset"); };
 
-  const saveEntries = () => {
-    if (!enteredBy.trim()) { setSaveMsg("Add your name under 'Entered by' first, so the log records who submitted."); return; }
-    const monthObj = {}; let bad = 0;
-    measures.forEach(it => { const raw = draft[it.name];
-      if (raw === "NA") monthObj[it.name] = "NA";
-      else if (raw !== "" && raw != null) { const n = parseFloat(raw);
-        if (isNaN(n) || n < 0 || n > 100) { bad++; return; } monthObj[it.name] = +(n / 100).toFixed(4); } });
-    const next = { ...entries, [entryMonth]: { ...(entries[entryMonth] || {}), ...monthObj } };
-    setEntries(next); ls.set("vmbs_entries_" + yr, next);
-    log("Entered " + MONTHS[entryMonth] + " " + yr + " actuals (" + Object.keys(monthObj).length + " measures)");
-    setSaveMsg((bad ? bad + " value(s) skipped (use 0–100 or N/A). " : "") + "Saved on this device. " + MONTHS[entryMonth] + " " + yr + " figures now show across the app. The Excel workbook remains the official record.");
-  };
-
   const goMeasures = (st, cat) => { setStatusFilter(st || null); setCatFilter(cat || null); setOpen(null); setTab("measures"); };
 
   /* ---------- screens ---------- */
   const filtered = measures.filter(it => (!statusFilter || stat(it.m[cycle], it.target) === statusFilter) && (!catFilter || it.cat === catFilter));
-  const entryList = measures.filter(it => (!entryOwner || it.owner === entryOwner) && (!entryCat || it.cat === entryCat));
 
   const Pulse = (
     <div>
@@ -951,62 +917,6 @@ function App() {
     </div>
   );
 
-  const Entry = (
-    <div>
-      <div className="card">
-        <div className="t15">Enter {yr} actuals</div>
-        <div className="sub13" style={{ marginTop: 4 }}>
-          Enter each actual as a percentage (e.g. 96.4) or mark N/A. The Excel workbook on SharePoint remains the official entry point and source of truth — figures saved here update this app's views on this device, pending the write-back phase.
-        </div>
-      </div>
-      <div className="h2l">Month</div>
-      <div className="chips">{MONTHS.map((mo, i) => <Chip key={mo} active={entryMonth === i} onClick={() => setEntryMonth(i)}>{mo}</Chip>)}</div>
-      <div className="sub" style={{ margin: "8px 4px 0" }}>
-        {MONTHS[entryMonth]} {yr} actuals are due by <strong style={{ color: "#E4012B" }}>{yr === 2026 ? DEADLINES[entryMonth] : "the second Monday of the following month"}</strong>.
-      </div>
-      <div className="h2l">Filter</div>
-      <div className="chips">
-        <Chip active={!entryOwner && !entryCat} onClick={() => { setEntryOwner(null); setEntryCat(null); }}>All</Chip>
-        {owners.map(o => <Chip key={o} active={entryOwner === o} onClick={() => setEntryOwner(entryOwner === o ? null : o)}>{o}</Chip>)}
-      </div>
-      <div className="chips" style={{ marginTop: 6 }}>
-        {CATLIST.map(c => measures.some(it => it.cat === c) &&
-          <Chip key={c} active={entryCat === c} onClick={() => setEntryCat(entryCat === c ? null : c)}>{CATNAME[c]}</Chip>)}
-      </div>
-      <div className="sub" style={{ margin: "8px 4px 0" }}>{entryList.length} measure{entryList.length === 1 ? "" : "s"} shown</div>
-      {CATLIST.map(c => { const items = entryList.filter(it => it.cat === c); if (!items.length) return null;
-        return (
-          <div key={c}>
-            <div className="h2l">{CATNAME[c]}</div>
-            <div className="card" style={{ padding: "4px 14px" }}>
-              {items.map((it, idx) => (
-                <div key={it.name} className="row mid gap8" style={{ padding: "10px 0", borderBottom: idx < items.length - 1 ? "1px solid #F1ECE9" : "none" }}>
-                  <div style={{ flex: 1, fontSize: 12.5, lineHeight: 1.3 }}>{it.name}
-                    <span className="sub" style={{ display: "block", fontSize: 10.5 }}>{it.owner} · target {pct(it.target, 2)}</span></div>
-                  {draft[it.name] === "NA" ? <span className="sub b">N/A</span> : (
-                    <div className="row mid" style={{ gap: 3 }}>
-                      <input className="numin" type="number" inputMode="decimal" min="0" max="100" step="0.01"
-                        value={draft[it.name] ?? ""} placeholder="—"
-                        onChange={e => setDraft({ ...draft, [it.name]: e.target.value })} />
-                      <span className="sub">%</span>
-                    </div>)}
-                  <button className="nabtn" data-on={draft[it.name] === "NA"}
-                    onClick={() => setDraft({ ...draft, [it.name]: draft[it.name] === "NA" ? "" : "NA" })}>N/A</button>
-                </div>))}
-            </div>
-          </div>); })}
-      <div className="card row mid gap8" style={{ marginTop: 16 }}>
-        <div className="sub13" style={{ flex: 1 }}>Entered by</div>
-        <input className="login-in" style={{ marginBottom: 0, maxWidth: 220 }} placeholder="Your name" value={enteredBy}
-          onChange={e => { setEnteredBy(e.target.value); try { localStorage.setItem("vmbs_entered_by", e.target.value); } catch (err) {} }} />
-      </div>
-      <div style={{ position: "sticky", bottom: 86, marginTop: 12, paddingBottom: 8 }}>
-        <button className="cta shadow" onClick={saveEntries}>Save {MONTHS[entryMonth]} {yr} actuals</button>
-        {saveMsg && <div className="okmsg">{saveMsg}</div>}
-      </div>
-    </div>
-  );
-
   const Settings = !admin ? null : (
     <SettingsScreen adminPw={adminPw} setAdminPw={p => { setAdminPw(p); ls.set("vmbs_admin_pw", p); log("Changed admin password"); }}
       measures={measures} ovr={ovr} setOvr={o => { setOvr(o); ls.set("vmbs_admin_ovr", o); }} log={log} audit={audit}
@@ -1018,7 +928,6 @@ function App() {
     ["measures", "Measures", "M4 6h16M4 12h16M4 18h10"],
     ["history", "History", "M4 4v16h16M8 14v3M12 9v8M16 12v5M20 7v10"],
     ["report", "Report", "M12 3v12m0 0l-4-4m4 4l4-4M5 21h14"],
-    ["entry", "Entry", "M16 3l5 5L8 21H3v-5L16 3z", true],
     ["settings", "Settings", "M12 8a4 4 0 100 8 4 4 0 000-8zM19 12a7 7 0 01-.1 1.2l2 1.6-2 3.4-2.4-1a7 7 0 01-2 1.2L14 21h-4l-.5-2.6a7 7 0 01-2-1.2l-2.4 1-2-3.4 2-1.6A7 7 0 015 12a7 7 0 01.1-1.2l-2-1.6 2-3.4 2.4 1a7 7 0 012-1.2L10 3h4l.5 2.6a7 7 0 012 1.2l2.4-1 2 3.4-2 1.6c.07.4.1.8.1 1.2z", true],
   ];
 
@@ -1035,7 +944,7 @@ function App() {
             "Workbook · " + new Date(ext.loadedAt).toLocaleDateString("en-JM", { day: "numeric", month: "short" })}</span>
           {admin ? (
             <button className="userchip" title="Sign out of admin"
-              onClick={() => { try { sessionStorage.removeItem("vmbs_admin"); } catch (e) {} setAdmin(false); if (tab === "settings" || tab === "entry") setTab("pulse"); }}>A</button>
+              onClick={() => { try { sessionStorage.removeItem("vmbs_admin"); } catch (e) {} setAdmin(false); if (tab === "settings") setTab("pulse"); }}>A</button>
           ) : (
             <button className="loginpill" onClick={() => { setPwOpen(true); setPwTry(""); setPwErr(""); }}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -1050,7 +959,6 @@ function App() {
           {tab === "measures" && Measures}
           {tab === "history" && History}
           {tab === "report" && Report}
-          {tab === "entry" && (admin ? Entry : null)}
           {tab === "settings" && Settings}
         </div>
         {pwOpen && (
@@ -1058,7 +966,7 @@ function App() {
             <div className="modal" onClick={e => e.stopPropagation()} onKeyDown={e => { if (e.key === "Escape") setPwOpen(false); }}>
               <button className="modalx" aria-label="Close" onClick={() => setPwOpen(false)}>✕</button>
               <div className="t15" style={{ marginBottom: 4, paddingRight: 28 }}>Admin sign-in</div>
-              <div className="sub13" style={{ marginBottom: 12 }}>Needed for Entry and Settings. Viewing the dashboard, history and reports stays open to everyone.</div>
+              <div className="sub13" style={{ marginBottom: 12 }}>Needed for Settings, including loading an updated Excel workbook. Viewing the dashboard, history and reports stays open to everyone.</div>
               <input className="login-in" type="password" placeholder="Admin password" value={pwTry} autoFocus
                 onChange={e => setPwTry(e.target.value)}
                 onKeyDown={e => { if (e.key === "Enter") { if (pwTry === adminPw) { try { sessionStorage.setItem("vmbs_admin", "1"); } catch (err) {} setAdmin(true); setPwOpen(false); if (pwNext) { setTab(pwNext); setPwNext(null); } log("Signed in"); } else setPwErr("Incorrect password."); } }} />
@@ -1188,7 +1096,7 @@ function SettingsScreen({ adminPw, setAdminPw, measures, ovr, setOvr, log, audit
             onChange={e => setNm({ ...nm, target: e.target.value })} />
         </div>
         <button className="cta2" onClick={addMeasure}>Add measure</button>
-        <div className="sub">New measures start with no actuals; staff enter them on the Entry tab. Add the same row to the Excel workbook so the official record matches.</div>
+        <div className="sub">New measures start with no actuals. Add the same row to the Excel workbook and reload it here so the actuals flow through and the official record matches.</div>
       </div>
 
       <div className="h2l">Admin password</div>
