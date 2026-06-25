@@ -637,9 +637,15 @@ function App() {
   const targetAvg = measures.reduce((a, it) => a + it.target, 0) / Math.max(measures.length, 1);
   const counts = useMemo(() => { const c = { on: 0, margin: 0, off: 0, way: 0 };
     measures.forEach(it => { const s = stat(it.m[cycle], it.target); if (s) c[s]++; }); return c; }, [measures, cycle]);
-  const hist = ext ? (ext.hist ? ext.hist.groups : null) : HIST;
-  const avg29 = ext ? (ext.hist ? ext.hist.avg : null) : HAVG;
-  const histLinked = !ext; /* built-in HIST rows link to built-in measures for 2026 extension */
+  /* History heat map: use the uploaded workbook's own Historical Trend sheet when it
+     carries one; otherwise fall back to the built-in 2024–2026 series so the previous
+     years still show even when an upload only contains the current-year Key Processes
+     sheet (the common case). When we fall back, histLinked stays on so the current
+     year extends from the live measures via the built-in rows' id links. */
+  const usingBuiltinHist = !(ext && ext.hist);
+  const hist = usingBuiltinHist ? HIST : ext.hist.groups;
+  const avg29 = usingBuiltinHist ? HAVG : ext.hist.avg;
+  const histLinked = usingBuiltinHist; /* built-in HIST rows link to built-in measures for the current-year extension */
 
   useEffect(() => { setRepM(cycle); setRepTo(cycle); }, [ext]);
 
