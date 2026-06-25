@@ -637,8 +637,11 @@ function App() {
   const targetAvg = measures.reduce((a, it) => a + it.target, 0) / Math.max(measures.length, 1);
   const counts = useMemo(() => { const c = { on: 0, margin: 0, off: 0, way: 0 };
     measures.forEach(it => { const s = stat(it.m[cycle], it.target); if (s) c[s]++; }); return c; }, [measures, cycle]);
-  const hist = ext ? (ext.hist ? ext.hist.groups : null) : HIST;
-  const avg29 = ext ? (ext.hist ? ext.hist.avg : null) : HAVG;
+  /* History heat map. Prefer the workbook's own "Historical Trend" sheet when the
+     upload carries one; otherwise fall back to the built-in 2024–2025 history so the
+     previous years never disappear just because an uploaded file omitted that sheet. */
+  const hist = (ext && ext.hist && ext.hist.groups) ? ext.hist.groups : HIST;
+  const avg29 = (ext && ext.hist && ext.hist.avg) ? ext.hist.avg : HAVG;
   const histLinked = !ext; /* built-in HIST rows link to built-in measures for 2026 extension */
 
   useEffect(() => { setRepM(cycle); setRepTo(cycle); }, [ext]);
@@ -705,8 +708,12 @@ function App() {
     }
     if (!key) { setLiveMsg("Saved on this device only — no publish key entered, so other people won't see this update."); return; }
     try {
+      /* Publish only the parsed figures — drop the raw base64 workbook. It can be several
+         MB, which overruns the serverless request-body limit and makes the publish fail
+         silently (leaving the upload device-only). Viewers rebuild the file on download. */
+      const { raw, ...slim } = obj;
       const r = await fetch("/api/data", { method: "POST",
-        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key }, body: JSON.stringify(obj) });
+        headers: { "Content-Type": "application/json", "Authorization": "Bearer " + key }, body: JSON.stringify(slim) });
       if (r.status === 401) { try { sessionStorage.removeItem("vmbs_pub_key"); } catch (e) {} throw new Error("the publish key was rejected"); }
       if (r.status === 503) throw new Error("the shared store isn't set up on the server yet");
       if (!r.ok) throw new Error("server returned " + r.status);
@@ -752,11 +759,11 @@ function App() {
       const GMARK = { "Tracked across 2024 – 2026": "Measures tracked across 2024 – 2026",
         "Introduced 2025": "Measures introduced in 2025", "Retired after 2024": "Measures retired after 2024" };
       const hoa = [[CONFIG.histSheet, "Key measure", ...MLABELS]];
-      HIST.forEach(grp => {
+      (hist || HIST).forEach(grp => {
         hoa.push([GMARK[grp.g] || (grp.g + " measures"), "", ...new Array(36).fill("")]);
         grp.rows.forEach(row => hoa.push(["", row[0], ...pad36(row[2])]));
       });
-      hoa.push(["", "Monthly actual", ...pad36(HAVG)]);
+      hoa.push(["", "Monthly actual", ...pad36(avg29 || HAVG)]);
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(hoa), CONFIG.histSheet);
 
       const name = "VMBS_Operations_SLA_Data_" + yr + ".xlsx";
