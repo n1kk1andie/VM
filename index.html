@@ -699,6 +699,24 @@ function App() {
       });
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(aoa), CONFIG.keySheet);
+
+      /* Also write the 2024–2026 history as a second sheet so the History heat map
+         survives the round-trip. Without this, re-uploading a built-in download has
+         no history sheet, parseHistSheet returns null, and only History goes blank. */
+      const MLABELS = [];
+      [24, 25, 26].forEach(y => MONTHS.forEach(m => MLABELS.push(m + "-" + y)));
+      const histCell = v => typeof v === "number" ? v : "";
+      const pad36 = a => { const out = a.slice(0, 36).map(histCell); while (out.length < 36) out.push(""); return out; };
+      const GMARK = { "Tracked across 2024 – 2026": "Measures tracked across 2024 – 2026",
+        "Introduced 2025": "Measures introduced in 2025", "Retired after 2024": "Measures retired after 2024" };
+      const hoa = [[CONFIG.histSheet, "Key measure", ...MLABELS]];
+      HIST.forEach(grp => {
+        hoa.push([GMARK[grp.g] || (grp.g + " measures"), "", ...new Array(36).fill("")]);
+        grp.rows.forEach(row => hoa.push(["", row[0], ...pad36(row[2])]));
+      });
+      hoa.push(["", "Monthly actual", ...pad36(HAVG)]);
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(hoa), CONFIG.histSheet);
+
       const name = "VMBS_Operations_SLA_Data_" + yr + ".xlsx";
       dl(new Blob([XLSX.write(wb, { bookType: "xlsx", type: "array" })], { type: XLSX_MIME }), name, XLSX_MIME);
       log("Downloaded data file: " + name);
@@ -1039,7 +1057,7 @@ function App() {
 const UPDATE_STEPS = [
   { n: "1", title: "Download", body: 'Tap "Download data file" above to get the current workbook. It holds every measure with the months entered so far.' },
   { n: "2", title: "Add the new month", body: "On the Key Processes & SLA sheet, fill in the new month's column with each measure's actual. Enter percentages as decimals — e.g. 0.964 for 96.4%. Leave a cell blank if there is no data, or type N/A where it does not apply." },
-  { n: "3", title: "Leave the setup columns alone", body: "Keep the Owner, Unit, YTD SLA % Target and For Publication (YES) columns as they are. Only rows marked YES appear in the monitor." },
+  { n: "3", title: "Leave the setup columns and second sheet alone", body: "Keep the Owner, Unit, YTD SLA % Target and For Publication (YES) columns as they are — only rows marked YES appear in the monitor. Also leave the second “Historical Trend 2024-2026” sheet untouched; it carries the History heat map so it survives the upload." },
   { n: "4", title: "Upload & verify", body: 'Save the file, then tap "Upload data file" below. The new figures publish across every tab and the report straight away.' },
 ];
 
