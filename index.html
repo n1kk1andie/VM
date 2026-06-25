@@ -66,14 +66,14 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family:'IBM Ple
 .legend { display:flex; gap:12px; flex-wrap:wrap; margin:0 4px 10px; font-size:10.5px; color:#6E625E; font-weight:600; }
 .legend span { display:inline-flex; align-items:center; gap:4px; }
 .sw { width:11px; height:11px; border-radius:3px; display:inline-block; }
-.hm { min-width: calc(150px + 36 * 18px); }
+.hm { min-width: calc(150px + 36 * 22px); }
 .hmname { width:150px; flex-shrink:0; position:sticky; left:0; background:#fff; z-index:2; font-size:10px; color:#4A403C;
   padding-right:8px; line-height:1.15; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .hmname.b { font-weight:700; color:var(--ink); font-size:10.5px; }
-.hmyear { width:216px; font-family:Sora; font-size:11px; font-weight:700; color:var(--red); border-bottom:2px solid #F1ECE9;
+.hmyear { width:264px; font-family:Sora; font-size:11px; font-weight:700; color:var(--red); border-bottom:2px solid #F1ECE9;
   padding-bottom:2px; text-align:center; }
-.hmmon { width:18px; font-size:8.5px; color:#A89C97; text-align:center; font-weight:600; }
-.hmcell { width:16px; height:16px; margin:1px; border-radius:3px; cursor:pointer; flex-shrink:0; }
+.hmmon { width:22px; font-size:9px; color:#7A6E6A; text-align:center; font-weight:600; white-space:nowrap; }
+.hmcell { width:20px; height:20px; margin:1px; border-radius:3px; cursor:pointer; flex-shrink:0; }
 .hmgroup { position:sticky; left:0; font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
   color:var(--dim); margin:8px 0 4px; background:#fff; width:150px; z-index:2; }
 .cta { width:100%; border:none; background:var(--red); color:#fff; font-family:Sora; font-weight:700; font-size:14px;
@@ -117,9 +117,9 @@ body { margin:0; background:var(--paper); color:var(--ink); font-family:'IBM Ple
     border:1px solid #E4DDD9; }
   .tabbtn.on { background:var(--red); border-color:var(--red); color:#fff; }
   .tabbtn span { font-size:12px; }
-  .hmcell { width:19px; height:19px; } .hmmon { width:21px; } .hmyear { width:252px; }
+  .hmcell { width:22px; height:22px; } .hmmon { width:24px; font-size:10px; } .hmyear { width:288px; }
   .hmname { width:210px; } .hmgroup { width:210px; }
-  .hm { min-width: calc(210px + 36 * 21px); }
+  .hm { min-width: calc(210px + 36 * 24px); }
   .mgrid { grid-template-columns:repeat(12,1fr); }
   .big { font-size:60px; }
 }
@@ -314,6 +314,9 @@ const safeCSV = fn => { try { fn(); }
   catch (e) { window.alert("CSV download failed — " + e.message + ".\n\nNote: downloads are blocked when this app is previewed inside the chat. Open the app file directly in a browser."); } };
 const CATLIST = ["TPE", "BSS", "SRP", "POL", "PEE", "OTH"];
 const CATNAME = { ...CATS, POL: "Policies", OTH: "Other" };
+/* heat-map year divider: a line at the start of each calendar year (every 12 cells) */
+const YEAR_DIV = "2px solid #C9C2BE";
+const yearDiv = i => (i % 12 === 0 && i !== 0 ? { borderLeft: YEAR_DIV } : {});
 const CATFULL = { TPE: "Transaction Processing Efficiency", BSS: "Business Support Services",
   SRP: "Service Request Processing (Responsiveness)", POL: "Policies", PEE: "Process Effectiveness / Efficacy", OTH: "Other" };
 const OWNER_TITLES = {
@@ -583,13 +586,7 @@ function downloadCSVData(measures, from, to, label, yr) {
 
 /* ---------- main app ---------- */
 function App() {
-  const [admin, setAdmin] = useState(() => { try { return sessionStorage.getItem("vmbs_admin") === "1" } catch (e) { return false } });
-  const [pwOpen, setPwOpen] = useState(false);
-  const [pwNext, setPwNext] = useState(null);
-  const [pwTry, setPwTry] = useState("");
-  const [pwErr, setPwErr] = useState("");
   const [tab, setTab] = useState("pulse");
-  const [adminPw, setAdminPw] = useState(() => ls.get("vmbs_admin_pw", "pa55w0rd"));
   const [ovr, setOvr] = useState(() => ls.get("vmbs_admin_ovr", { renames: {}, retired: [], added: [], targets: {}, owners: {} }));
   const [audit, setAudit] = useState(() => ls.get("vmbs_audit", []));
   const [ext, setExt] = useState(() => ls.get("vmbs_workbook", null));
@@ -606,7 +603,7 @@ function App() {
   const yr = (ext && ext.year) || DATA_YEAR;
   const hmStart = yr - 2;
 
-  const log = (action) => { const next = [{ who: admin ? "Administrator" : "Viewer", when: new Date().toISOString(), action }, ...audit].slice(0, 200);
+  const log = (action) => { const next = [{ who: "Staff", when: new Date().toISOString(), action }, ...audit].slice(0, 200);
     setAudit(next); ls.set("vmbs_audit", next); };
 
   /* effective measure list: uploaded workbook || built-in dataset + admin overrides */
@@ -871,16 +868,18 @@ function App() {
           <div className="hm">
             <div className="row">
               <div className="hmname" />
-              {[hmStart, hmStart + 1, hmStart + 2].map(y => <div key={y} className="hmyear">{y}</div>)}
+              {[hmStart, hmStart + 1, hmStart + 2].map((y, k) => <div key={y} className="hmyear"
+                style={k > 0 ? { borderLeft: YEAR_DIV } : null}>{y}</div>)}
             </div>
             <div className="row" style={{ marginBottom: 4 }}>
               <div className="hmname" />
-              {Array.from({ length: 36 }, (_, i) => <div key={i} className="hmmon">{MONTHS[i % 12][0]}</div>)}
+              {Array.from({ length: 36 }, (_, i) => <div key={i} className="hmmon"
+                style={i % 12 === 0 && i !== 0 ? { borderLeft: YEAR_DIV } : null}>{MONTHS[i % 12]}</div>)}
             </div>
             {extScore().some(v => v != null) && (
               <div className="row mid" style={{ marginBottom: 6 }}>
                 <div className="hmname b">Performance score</div>
-                {extScore().map((v, i) => <div key={i} className="hmcell" style={{ background: band(v) }}
+                {extScore().map((v, i) => <div key={i} className="hmcell" style={{ background: band(v), ...yearDiv(i) }}
                   onClick={() => setCell({ name: "Performance score (actual ÷ target)", label: MONTHS[i % 12] + " " + (hmStart + Math.floor(i / 12)), v })} />)}
               </div>)}
             {(hist || []).map(grp => (
@@ -889,7 +888,7 @@ function App() {
                 {grp.rows.map(([name, link, v29]) => (
                   <div key={name} className="row mid">
                     <div className="hmname">{name}</div>
-                    {extRow(link, v29).map((v, i) => <div key={i} className="hmcell" style={{ background: band(v) }}
+                    {extRow(link, v29).map((v, i) => <div key={i} className="hmcell" style={{ background: band(v), ...yearDiv(i) }}
                       onClick={() => setCell({ name, label: MONTHS[i % 12] + " " + (hmStart + Math.floor(i / 12)), v })} />)}
                   </div>))}
               </div>))}
@@ -958,9 +957,8 @@ function App() {
     </div>
   );
 
-  const Settings = !admin ? null : (
-    <SettingsScreen adminPw={adminPw} setAdminPw={p => { setAdminPw(p); ls.set("vmbs_admin_pw", p); log("Changed admin password"); }}
-      loadFile={loadFile} downloadDataFile={downloadDataFile} ext={ext} liveMsg={liveMsg} yr={yr} cycle={cycle} />
+  const Settings = (
+    <SettingsScreen loadFile={loadFile} downloadDataFile={downloadDataFile} ext={ext} liveMsg={liveMsg} yr={yr} cycle={cycle} />
   );
 
   const tabs = [
@@ -982,16 +980,6 @@ function App() {
           </div>
           <span className={"srcbadge" + (ext ? " live" : "")}>{!ext ? "Built-in data" : ext.type === "graph" ? "Live · SharePoint" :
             "Workbook · " + new Date(ext.loadedAt).toLocaleDateString("en-JM", { day: "numeric", month: "short" })}</span>
-          {admin ? (
-            <button className="userchip" title="Sign out of admin"
-              onClick={() => { try { sessionStorage.removeItem("vmbs_admin"); } catch (e) {} setAdmin(false); if (tab === "settings") setTab("pulse"); }}>A</button>
-          ) : (
-            <button className="loginpill" onClick={() => { setPwOpen(true); setPwTry(""); setPwErr(""); }}>
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <rect x="4" y="11" width="16" height="9" rx="2" /><path d="M8 11V7a4 4 0 018 0v4" /></svg>
-              Login
-            </button>
-          )}
         </div>
         {liveMsg && <div className="banner">{liveMsg}</div>}
         <div className="content">
@@ -1001,32 +989,12 @@ function App() {
           {tab === "report" && Report}
           {tab === "settings" && Settings}
         </div>
-        {pwOpen && (
-          <div className="overlay" onClick={() => setPwOpen(false)}>
-            <div className="modal" onClick={e => e.stopPropagation()} onKeyDown={e => { if (e.key === "Escape") setPwOpen(false); }}>
-              <button className="modalx" aria-label="Close" onClick={() => setPwOpen(false)}>✕</button>
-              <div className="t15" style={{ marginBottom: 4, paddingRight: 28 }}>Admin sign-in</div>
-              <div className="sub13" style={{ marginBottom: 12 }}>Needed for Settings, including loading an updated Excel workbook. Viewing the dashboard, history and reports stays open to everyone.</div>
-              <input className="login-in" type="password" placeholder="Admin password" value={pwTry} autoFocus
-                onChange={e => setPwTry(e.target.value)}
-                onKeyDown={e => { if (e.key === "Enter") { if (pwTry === adminPw) { try { sessionStorage.setItem("vmbs_admin", "1"); } catch (err) {} setAdmin(true); setPwOpen(false); if (pwNext) { setTab(pwNext); setPwNext(null); } log("Signed in"); } else setPwErr("Incorrect password."); } }} />
-              {pwErr && <div className="errmsg">{pwErr}</div>}
-              <button className="cta" onClick={() => { if (pwTry === adminPw) { try { sessionStorage.setItem("vmbs_admin", "1"); } catch (e) {} setAdmin(true); setPwOpen(false); if (pwNext) { setTab(pwNext); setPwNext(null); } log("Signed in"); } else setPwErr("Incorrect password."); }}>Unlock</button>
-              <button className="cta2" onClick={() => setPwOpen(false)}>Cancel</button>
-            </div>
-          </div>
-        )}
         <div className="tabbar">
-          {tabs.map(([id, label, icon, locked]) => (
+          {tabs.map(([id, label, icon]) => (
             <button key={id} className={"tabbtn" + (tab === id ? " on" : "")}
-              onClick={() => { if (locked && !admin) { setPwNext(id); setPwOpen(true); setPwTry(""); setPwErr(""); return; }
-                setTab(id); window.scrollTo(0, 0); }}>
+              onClick={() => { setTab(id); window.scrollTo(0, 0); }}>
               <span className="iconwrap">
                 <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d={icon} /></svg>
-                {locked && !admin && (
-                  <svg className="tablock" width="11" height="11" viewBox="0 0 24 24" fill="#fff" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                    <rect x="4" y="11" width="16" height="9" rx="2" /><path d="M8 11V7a4 4 0 018 0v4" /></svg>
-                )}
               </span>
               <span>{label}</span>
             </button>))}
@@ -1043,15 +1011,8 @@ const UPDATE_STEPS = [
   { n: "4", title: "Upload & verify", body: 'Save the file, then tap "Upload data file" below. The new figures publish across every tab and the report straight away.' },
 ];
 
-function SettingsScreen({ adminPw, setAdminPw, loadFile, downloadDataFile, ext, liveMsg, yr, cycle }) {
-  const [cur, setCur] = useState(""); const [n1, setN1] = useState(""); const [n2, setN2] = useState(""); const [pwMsg, setPwMsg] = useState("");
+function SettingsScreen({ loadFile, downloadDataFile, ext, liveMsg, yr, cycle }) {
   const fileRef = React.useRef(null);
-  const changePw = () => {
-    if (cur !== adminPw) return setPwMsg("Current password is incorrect.");
-    if (n1.length < 6) return setPwMsg("New password must be at least 6 characters.");
-    if (n1 !== n2) return setPwMsg("New passwords do not match.");
-    setAdminPw(n1); setCur(""); setN1(""); setN2(""); setPwMsg("Password changed on this device.");
-  };
   const sourceLabel = !ext ? "Built-in data · latest month " + MONTHS[cycle] + " " + yr
     : ext.type === "graph" ? "Live · SharePoint workbook"
     : "Workbook · \"" + ext.label + "\", loaded " + new Date(ext.loadedAt).toLocaleString("en-JM");
@@ -1086,16 +1047,6 @@ function SettingsScreen({ adminPw, setAdminPw, loadFile, downloadDataFile, ext, 
               <div className="sub13" style={{ lineHeight: 1.5 }}>{body}</div>
             </div>
           </div>))}
-      </div>
-
-      <div className="h2l">Admin password</div>
-      <div className="card col gap8">
-        <input className="login-in" type="password" placeholder="Current password" value={cur} onChange={e => setCur(e.target.value)} />
-        <input className="login-in" type="password" placeholder="New password" value={n1} onChange={e => setN1(e.target.value)} />
-        <input className="login-in" type="password" placeholder="Repeat new password" value={n2} onChange={e => setN2(e.target.value)} />
-        <button className="cta2" onClick={changePw}>Change password</button>
-        {pwMsg && <div className="sub b">{pwMsg}</div>}
-        <div className="sub">The password is held in this app on each device, not on a server — so a change applies to the device where it's made. Treat this as pilot-level access control; Microsoft 365 sign-in replaces it when GICT connects the app.</div>
       </div>
 
       <div className="sub" style={{ margin: "16px 4px 20px", textAlign: "center" }}>
